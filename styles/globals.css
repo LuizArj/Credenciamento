@@ -1,0 +1,62 @@
+/* styles/globals.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  /* Fundo com gradiente suave */
+  .app-container {
+    @apply flex items-center justify-center min-h-screen bg-gradient-to-br from-sebrae-green to-sebrae-blue font-sans;
+  }
+  
+  /* Card centralizado com melhores sombras e bordas */
+  .card {
+    @apply w-full max-w-md p-8 space-y-6 bg-white rounded-2xl shadow-xl; /* max-w-md é ~448px */
+  }
+
+  /* Título principal do card */
+  .card-title {
+    @apply text-3xl font-bold text-center text-gray-800;
+  }
+  
+  /* Subtítulo explicativo */
+  .card-subtitle {
+    @apply text-center text-gray-500 -mt-4 mb-6;
+  }
+
+  .form-group {
+    @apply space-y-6;
+  }
+  .form-label {
+    @apply block mb-2 text-sm font-medium text-gray-700;
+  }
+  
+  /* Input com melhor acessibilidade e foco */
+  .form-input {
+    @apply w-full p-3 text-lg text-center border border-gray-300 rounded-lg shadow-sm transition-colors
+           focus:border-sebrae-blue focus:ring-2 focus:ring-sebrae-blue focus:ring-opacity-50;
+  }
+
+  /* Classe base para botões */
+  .btn {
+    @apply w-full py-3 font-semibold text-white rounded-lg shadow-md transition-all transform hover:scale-105;
+  }
+  
+  /* Botão de Ação Principal (CTA) */
+  .btn-primary {
+    @apply bg-sebrae-blue hover:bg-opacity-90 disabled:bg-gray-400 disabled:hover:scale-100;
+  }
+  
+  .btn-success {
+    @apply bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:hover:scale-100;
+  }
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-700 hover:bg-gray-300;
+  }
+
+  /* Feedback de erro */
+  .feedback-error {
+    @apply text-red-600 text-sm mt-2 text-center;
+  }
+}
