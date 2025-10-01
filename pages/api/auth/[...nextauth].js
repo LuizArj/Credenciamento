@@ -2,14 +2,44 @@ import NextAuth from 'next-auth';
 import KeycloakProvider from 'next-auth/providers/keycloak';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { authenticateLocalUser } from '../../../utils/user-management';
+import https from 'https';
+
+// Desabilitar verificação SSL em desenvolvimento
+if (process.env.NODE_ENV === 'development') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 
 export const authOptions = {
   providers: [
     KeycloakProvider({
       clientId: process.env.KEYCLOAK_CLIENT_ID,
       clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
-      issuer: process.env.KEYCLOAK_ISSUER || `http://localhost:8080/realms/${process.env.KEYCLOAK_REALM}`,
-      authorization: { params: { scope: 'openid email profile' } }
+      issuer: process.env.KEYCLOAK_ISSUER,
+      wellKnown: undefined, // Desabilita descoberta automática
+      authorization: {
+        url: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/auth`,
+        params: { 
+          scope: 'openid email profile',
+          response_type: 'code'
+        } 
+      },
+      token: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/token`,
+      userinfo: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/userinfo`,
+      jwks_endpoint: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/certs`,
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name || profile.preferred_username,
+          email: profile.email,
+          roles: profile.roles || profile.groups || []
+        }
+      },
+      httpOptions: {
+        timeout: 10000,
+        agent: new https.Agent({
+          rejectUnauthorized: false
+        })
+      }
     }),
     CredentialsProvider({
       name: 'Credenciais Locais',
