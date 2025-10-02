@@ -10,6 +10,7 @@ module.exports = {
         sebrae: {
           blue: '#00558C',
           "blue-dark": '#004a8f', // Azul mais escuro para o header
+          "blue-darker": '#003a7a', // Azul ainda mais escuro para hover
           green: '#8BC53F',
           dark: '#3c3c3c',
           "danger-red": '#e63946', // Vermelho para botões de ação destrutiva
