@@ -9,6 +9,8 @@ const EventsManagement = () => {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [sasCode, setSasCode] = useState('');
+  const [loadingSasEvent, setLoadingSasEvent] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     date: '',
@@ -23,14 +25,112 @@ const EventsManagement = () => {
     coordenador: '',
     solucao: '',
     unidade: '',
-    tipoAcao: ''
+    tipoAcao: '',
+    codevento_sas: ''
   });
 
+  // Buscar evento SAS e preencher formulário
+  const fetchSasEvent = async () => {
+    if (!sasCode.trim()) {
+      alert('Digite o código do evento SAS');
+      return;
+    }
+
+    setLoadingSasEvent(true);
+    try {
+      const response = await fetch(`/api/fetch-sas-event?codEvento=${sasCode}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Erro detalhado:', data);
+        
+        let errorMessage = `Erro ao buscar evento SAS (${response.status}): ${data.message}`;
+        
+        if (data.debug) {
+          errorMessage += '\n\nDetalhes técnicos:\n';
+          errorMessage += `- URL: ${data.debug.url}\n`;
+          if (data.debug.headers) {
+            errorMessage += `- API Key: ${data.debug.headers['x-req']}\n`;
+            errorMessage += `- Código Sebrae: ${data.debug.headers.CodSebrae}`;
+          }
+        }
+        
+        if (data.details) {
+          errorMessage += '\n\nResposta da API SAS:\n' + data.details.substring(0, 200);
+        }
+        
+        alert(errorMessage);
+        return;
+      }
+
+      const evento = data.evento;
+      
+      // Preencher formulário com dados do SAS
+      setFormData({
+        name: evento.nome,
+        date: evento.data_inicio ? evento.data_inicio.split('T')[0] : '',
+        endDate: evento.data_fim ? evento.data_fim.split('T')[0] : '',
+        location: evento.local,
+        capacity: evento.maximo_participantes?.toString() || evento.capacidade?.toString() || '',
+        modalidade: evento.modalidade?.toUpperCase() || 'PRESENCIAL',
+        tipoEvento: mapTipoEvento(evento.instrumento || evento.tipo_evento),
+        publico: evento.publico_alvo,
+        status: evento.status,
+        publicoAlvo: evento.publico_alvo,
+        gerente: evento.gerente,
+        coordenador: evento.coordenador,
+        solucao: evento.solucao,
+        unidade: evento.unidade,
+        tipoAcao: evento.tipo_acao,
+        codevento_sas: evento.codevento_sas,
+        description: evento.descricao,
+        // Novos campos com dados do SAS
+        carga_horaria: evento.carga_horaria?.toString() || '',
+        minimo_participantes: evento.minimo_participantes?.toString() || '',
+        preco: evento.preco?.toString() || '0',
+        gratuito: evento.gratuito || false,
+        projeto: evento.codigo_projeto || '',
+        instrumento: evento.instrumento || '',
+        vagas_disponiveis: evento.vagas_disponiveis?.toString() || ''
+      });
+
+      // Função para mapear instrumentos SAS para tipos de evento
+      function mapTipoEvento(instrumento) {
+        if (!instrumento) return 'CURSO';
+        
+        const instrumentoLower = instrumento.toLowerCase();
+        if (instrumentoLower.includes('oficina') || instrumentoLower.includes('workshop')) return 'WORKSHOP';
+        if (instrumentoLower.includes('palestra')) return 'PALESTRA';
+        if (instrumentoLower.includes('seminario') || instrumentoLower.includes('seminário')) return 'SEMINARIO';
+        return 'CURSO';
+      }
+
+      const alertMessage = `✅ Dados do evento SAS carregados com sucesso!
+
+📋 ${evento.nome}
+🆔 Código SAS: ${evento.codevento_sas}
+📍 Local: ${evento.local}
+👥 Participantes: ${evento.minimo_participantes || 'N/A'} a ${evento.maximo_participantes || 'N/A'}
+⏰ Carga Horária: ${evento.carga_horaria || 'N/A'}h
+🎯 Modalidade: ${evento.modalidade || 'N/A'}
+🏷️ Instrumento: ${evento.instrumento || 'N/A'}
+💰 Preço: R$ ${evento.preco || '0'} ${evento.gratuito ? '(Gratuito)' : ''}
+📈 Vagas Disponíveis: ${evento.vagas_disponiveis || 'N/A'}`;
+
+      alert(alertMessage);
+    } catch (error) {
+      console.error('Erro na requisição:', error);
+      alert(`❌ Erro de conexão ao buscar evento SAS: ${error.message}\n\nVerifique:\n- Conexão com internet\n- Configuração da API\n- Código do evento existe`);
+    } finally {
+      setLoadingSasEvent(false);
+    }
+  };
+
   // Buscar eventos
-  const { data: events, isLoading, error } = useQuery({
+  const { data: eventsResponse, isLoading, error } = useQuery({
     queryKey: ['events'],
     queryFn: async () => {
-      const response = await fetch('/api/admin/events-management');
+      const response = await fetch('/api/admin/events');
       if (!response.ok) {
         throw new Error('Falha ao carregar eventos');
       }
@@ -38,15 +138,34 @@ const EventsManagement = () => {
     }
   });
 
+  const events = eventsResponse?.events || [];
+
   // Criar evento
   const createEventMutation = useMutation({
     mutationFn: async (eventData) => {
-      const response = await fetch('/api/admin/events-management', {
+      const response = await fetch('/api/admin/events', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(eventData)
+        body: JSON.stringify({
+          nome: eventData.name,
+          descricao: eventData.description,
+          dataInicio: eventData.date,
+          dataFim: eventData.endDate,
+          local: eventData.location,
+          capacidade: eventData.capacity,
+          modalidade: eventData.modalidade,
+          tipoEvento: eventData.tipoEvento,
+          publicoAlvo: eventData.publicoAlvo,
+          gerente: eventData.gerente,
+          coordenador: eventData.coordenador,
+          solucao: eventData.solucao,
+          unidade: eventData.unidade,
+          tipoAcao: eventData.tipoAcao,
+          status: eventData.status,
+          codevento_sas: eventData.codevento_sas
+        })
       });
 
       if (!response.ok) {
@@ -64,12 +183,30 @@ const EventsManagement = () => {
   // Atualizar evento
   const updateEventMutation = useMutation({
     mutationFn: async (eventData) => {
-      const response = await fetch('/api/admin/events-management', {
+      const response = await fetch('/api/admin/events', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(eventData)
+        body: JSON.stringify({
+          id: eventData.id,
+          nome: eventData.name,
+          descricao: eventData.description,
+          dataInicio: eventData.date,
+          dataFim: eventData.endDate,
+          local: eventData.location,
+          capacidade: eventData.capacity,
+          modalidade: eventData.modalidade,
+          tipoEvento: eventData.tipoEvento,
+          publicoAlvo: eventData.publicoAlvo,
+          gerente: eventData.gerente,
+          coordenador: eventData.coordenador,
+          solucao: eventData.solucao,
+          unidade: eventData.unidade,
+          tipoAcao: eventData.tipoAcao,
+          status: eventData.status,
+          codevento_sas: eventData.codevento_sas
+        })
       });
 
       if (!response.ok) {
@@ -87,7 +224,7 @@ const EventsManagement = () => {
   // Remover evento
   const deleteEventMutation = useMutation({
     mutationFn: async (eventId) => {
-      const response = await fetch(`/api/admin/events-management?id=${eventId}`, {
+      const response = await fetch(`/api/admin/events?id=${eventId}`, {
         method: 'DELETE'
       });
 
@@ -106,20 +243,21 @@ const EventsManagement = () => {
     if (event) {
       setEditingEvent(event);
       setFormData({
-        name: event.name,
-        date: event.date,
-        location: event.location,
-        capacity: event.capacity,
+        name: event.nome,
+        date: event.data_inicio ? event.data_inicio.split('T')[0] : '',
+        location: event.local,
+        capacity: event.capacidade,
         modalidade: event.modalidade || '',
-        tipoEvento: event.tipoEvento || '',
+        tipoEvento: event.tipo_evento || '',
         publico: event.publico || '',
         status: event.status || 'active',
-        publicoAlvo: event.publicoAlvo || '',
+        publicoAlvo: event.publico_alvo || '',
         gerente: event.gerente || '',
         coordenador: event.coordenador || '',
         solucao: event.solucao || '',
         unidade: event.unidade || '',
-        tipoAcao: event.tipoAcao || ''
+        tipoAcao: event.tipo_acao || '',
+        codevento_sas: event.codevento_sas || ''
       });
     } else {
       setEditingEvent(null);
@@ -137,7 +275,8 @@ const EventsManagement = () => {
         coordenador: '',
         solucao: '',
         unidade: '',
-        tipoAcao: ''
+        tipoAcao: '',
+        codevento_sas: ''
       });
     }
     setIsModalOpen(true);
@@ -160,8 +299,10 @@ const EventsManagement = () => {
       coordenador: '',
       solucao: '',
       unidade: '',
-      tipoAcao: ''
+      tipoAcao: '',
+      codevento_sas: ''
     });
+    setSasCode('');
   };
 
   const handleSubmit = async (e) => {
@@ -228,6 +369,9 @@ const EventsManagement = () => {
                         Nome
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Código SAS
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Data
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -257,25 +401,34 @@ const EventsManagement = () => {
                     {events?.map((event) => (
                       <tr key={event.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {event.name}
+                          {event.nome}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(event.date).toLocaleDateString()}
+                          {event.codevento_sas ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {event.codevento_sas}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {event.location}
+                          {new Date(event.data_inicio).toLocaleDateString('pt-BR')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {event.modalidade}
+                          {event.local}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {event.tipoEvento}
+                          {event.modalidade || 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {event.capacity}
+                          {event.tipo_evento || 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {event.registeredParticipants}
+                          {event.capacidade || 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {event.totalRegistrations || 0}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -319,6 +472,40 @@ const EventsManagement = () => {
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <form onSubmit={handleSubmit}>
                 <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  
+                  {/* Seção de busca SAS - apenas para novos eventos */}
+                  {!editingEvent && (
+                    <div className="mb-6 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                      <h3 className="text-lg font-medium text-blue-900 mb-3">
+                        Importar evento do SAS
+                      </h3>
+                      <p className="text-sm text-blue-700 mb-3">
+                        Digite o código do evento SAS para preencher automaticamente os dados:
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Código do evento SAS"
+                          className="flex-1 px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={sasCode}
+                          onChange={(e) => setSasCode(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={fetchSasEvent}
+                          disabled={loadingSasEvent || !sasCode.trim()}
+                          className={`px-4 py-2 rounded-md font-medium ${
+                            loadingSasEvent || !sasCode.trim()
+                              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
+                        >
+                          {loadingSasEvent ? 'Buscando...' : 'Buscar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mb-4">
                     <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="name">
                       Nome do Evento
@@ -332,6 +519,19 @@ const EventsManagement = () => {
                       required
                     />
                   </div>
+
+                  {/* Mostrar código SAS se preenchido */}
+                  {formData.codevento_sas && (
+                    <div className="mb-4">
+                      <label className="block text-gray-700 text-sm font-bold mb-2">
+                        Código SAS
+                      </label>
+                      <div className="px-3 py-2 bg-gray-100 border rounded text-gray-700">
+                        {formData.codevento_sas}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mb-4">
                     <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="date">
                       Data

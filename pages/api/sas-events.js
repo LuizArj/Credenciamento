@@ -57,6 +57,28 @@ export default async function handler(req, res) {
             return {
                 id: evento.CodEvento,
                 nome: evento.TituloEvento,
+                // Usar PeriodoInicial como data principal do evento
+                dataEvento: evento.PeriodoInicial,
+                periodoInicial: evento.PeriodoInicial,
+                periodoFinal: evento.PeriodoFinal,
+                descricao: evento.DescProduto || evento.TituloEvento || '',
+                local: evento.Local || '',
+                capacidade: evento.MaxParticipante || 0,
+                cargaHoraria: evento.CargaHoraria || 0,
+                modalidade: evento.ModalidadeNome || 'Presencial',
+                instrumento: evento.InstrumentoNome || '',
+                situacao: evento.Situacao || '',
+                cidade: evento.NomeCidade || '',
+                vagasDisponiveis: evento.VagasDisponiveis || 0,
+                minParticipante: evento.MinParticipante || 0,
+                maxParticipante: evento.MaxParticipante || 0,
+                preco: evento.Preco || 0,
+                gratuito: evento.EventoGratuito === '1',
+                tipoPublico: evento.TipoPublico || '',
+                projeto: evento.DescProjeto || '',
+                unidadeOrganizacional: evento.DescUnidadeOrganizacional || '',
+                // Dados adicionais para sincronização
+                rawData: evento // Manter dados originais para referência
             };
         }) : [];
 

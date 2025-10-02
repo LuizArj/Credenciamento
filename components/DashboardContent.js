@@ -1,10 +1,24 @@
 import { useRouter } from 'next/router';
 import { useQuery } from '@tanstack/react-query';
 import Head from 'next/head';
-import { queries, useDashboardMetrics } from '../utils/supabase-client';
+import { useState } from 'react';
 
 export default function DashboardContent({ isAuthenticated }) {
-  const { metrics, isLoading, error } = useDashboardMetrics();
+  const router = useRouter();
+  const [period, setPeriod] = useState('month');
+
+  const { data: dashboardData, isLoading, error } = useQuery({
+    queryKey: ['dashboard', period],
+    queryFn: async () => {
+      const response = await fetch(`/api/admin/dashboard?period=${period}`);
+      if (!response.ok) {
+        throw new Error('Falha ao carregar dados do dashboard');
+      }
+      return response.json();
+    },
+    enabled: isAuthenticated,
+    refetchInterval: 30000, // Atualizar a cada 30 segundos
+  });
 
   if (!isAuthenticated) {
     return null;
@@ -26,8 +40,37 @@ export default function DashboardContent({ isAuthenticated }) {
     );
   }
 
+  const summary = dashboardData?.summary || {};
+  const recentCheckIns = dashboardData?.recentCheckIns || [];
+  const eventStats = dashboardData?.eventStats || [];
+  const chartData = dashboardData?.chartData || [];
+  const topCompanies = dashboardData?.topCompanies || [];
+
   return (
     <div className="py-6">
+      {/* Filtro de Período */}
+      <div className="mb-6">
+        <div className="flex space-x-2">
+          {[
+            { value: 'day', label: 'Hoje' },
+            { value: 'week', label: 'Última Semana' },
+            { value: 'month', label: 'Último Mês' },
+            { value: 'year', label: 'Último Ano' }
+          ].map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setPeriod(option.value)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                period === option.value
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
         {/* Cards de Métricas */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="bg-gradient-to-br from-blue-500 to-blue-600 overflow-hidden shadow-lg rounded-lg">
@@ -44,7 +87,7 @@ export default function DashboardContent({ isAuthenticated }) {
                       Total de Eventos
                     </dt>
                     <dd className="text-3xl font-bold text-white mt-1">
-                      {metrics?.totalEvents || 0}
+                      {summary?.totalEvents || 0}
                     </dd>
                   </dl>
                 </div>
@@ -79,7 +122,7 @@ export default function DashboardContent({ isAuthenticated }) {
                       Total de Participantes
                     </dt>
                     <dd className="text-3xl font-bold text-white mt-1">
-                      {metrics?.totalParticipants || 0}
+                      {summary?.totalParticipants || 0}
                     </dd>
                   </dl>
                 </div>
@@ -111,10 +154,10 @@ export default function DashboardContent({ isAuthenticated }) {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-white/80 truncate">
-                      Credenciamentos Hoje
+                      Credenciamentos {period === 'day' ? 'Hoje' : 'no Período'}
                     </dt>
                     <dd className="text-3xl font-bold text-white mt-1">
-                      {metrics?.participantsToday || 0}
+                      {summary?.checkedInRegistrations || 0}
                     </dd>
                   </dl>
                 </div>
@@ -149,7 +192,7 @@ export default function DashboardContent({ isAuthenticated }) {
                       Eventos Ativos
                     </dt>
                     <dd className="text-3xl font-bold text-white mt-1">
-                      {metrics?.activeEvents || 0}
+                      {summary?.activeEvents || 0}
                     </dd>
                   </dl>
                 </div>
@@ -202,38 +245,46 @@ export default function DashboardContent({ isAuthenticated }) {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {metrics?.recentCredentials?.map((credential) => (
-                      <tr key={credential.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-                              <span className="text-blue-600 font-medium">{credential.name.charAt(0)}</span>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">{credential.name}</div>
-                              <div className="text-sm text-gray-500">{credential.cpf}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">{credential.event}</div>
-                          <div className="text-xs text-gray-500">{credential.eventType}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">
-                            {new Date(credential.time).toLocaleTimeString()}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(credential.time).toLocaleDateString()}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            Confirmado
-                          </span>
+                    {recentCheckIns?.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-4 text-center text-gray-500">
+                          Nenhum credenciamento encontrado
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      recentCheckIns?.map((checkIn) => (
+                        <tr key={checkIn.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <span className="text-blue-600 font-medium">{checkIn.participantName.charAt(0)}</span>
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">{checkIn.participantName}</div>
+                                <div className="text-sm text-gray-500">{checkIn.participantCpf}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-900">{checkIn.eventName}</div>
+                            <div className="text-xs text-gray-500">{checkIn.eventLocation}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-900">
+                              {new Date(checkIn.checkInTime).toLocaleTimeString('pt-BR')}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(checkIn.checkInTime).toLocaleDateString('pt-BR')}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                              Confirmado
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -241,7 +292,7 @@ export default function DashboardContent({ isAuthenticated }) {
             <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-500">
-                  Mostrando últimos {metrics?.recentCredentials?.length || 0} credenciamentos
+                  Mostrando últimos {recentCheckIns?.length || 0} credenciamentos
                 </span>
                 <button
                   onClick={() => router.push('/admin/reports')}
@@ -257,7 +308,7 @@ export default function DashboardContent({ isAuthenticated }) {
           </div>
         </div>
 
-        {/* Distribuição por Evento */}
+        {/* Estatísticas por Evento e Empresas */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="bg-white shadow-lg rounded-lg overflow-hidden">
             <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-green-50 to-white">
@@ -265,41 +316,52 @@ export default function DashboardContent({ isAuthenticated }) {
                 <svg className="h-6 w-6 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                Distribuição por Evento
+                Performance dos Eventos
               </h3>
             </div>
             <div className="p-6">
               <div className="space-y-6">
-                {metrics?.eventsBreakdown?.map((event, index) => {
-                  const percentage = (event.participants / metrics.totalParticipants) * 100;
-                  const colors = [
-                    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 
-                    'bg-red-500', 'bg-yellow-500', 'bg-indigo-500'
-                  ];
-                  const color = colors[index % colors.length];
-                  
-                  return (
-                    <div key={event.name}>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-gray-900">
-                          {event.name}
-                        </span>
-                        <span className="text-sm font-semibold text-gray-900">
-                          {event.participants} ({percentage.toFixed(1)}%)
-                        </span>
-                      </div>
-                      <div className="relative">
-                        <div className="overflow-hidden h-3 rounded-full bg-gray-200">
-                          <div
-                            style={{ width: `${percentage}%` }}
-                            className={`h-full rounded-full ${color} transition-all duration-500`}
-                          >
+                {eventStats?.length === 0 ? (
+                  <div className="text-center text-gray-500">Nenhum evento encontrado</div>
+                ) : (
+                  eventStats?.map((event, index) => {
+                    const colors = [
+                      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 
+                      'bg-red-500', 'bg-yellow-500', 'bg-indigo-500'
+                    ];
+                    const color = colors[index % colors.length];
+                    
+                    return (
+                      <div key={event.id}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            {event.name}
+                          </span>
+                          <div className="text-right">
+                            <span className="text-sm font-semibold text-gray-900">
+                              {event.totalRegistrations} inscrições
+                            </span>
+                            <div className="text-xs text-gray-500">
+                              {event.attendanceRate}% comparecimento
+                            </div>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <div className="overflow-hidden h-3 rounded-full bg-gray-200">
+                            <div
+                              style={{ width: `${event.occupancyRate}%` }}
+                              className={`h-full rounded-full ${color} transition-all duration-500`}
+                            >
+                            </div>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Ocupação: {event.occupancyRate}% ({event.totalRegistrations}/{event.capacity})
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -308,38 +370,77 @@ export default function DashboardContent({ isAuthenticated }) {
             <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-white">
               <h3 className="text-lg leading-6 font-semibold text-gray-900 flex items-center">
                 <svg className="h-6 w-6 text-purple-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Empresas Mais Ativas
+              </h3>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                {topCompanies?.length === 0 ? (
+                  <div className="text-center text-gray-500">Nenhuma empresa encontrada</div>
+                ) : (
+                  topCompanies?.map((company, index) => (
+                    <div key={company.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                          <span className="text-purple-600 font-bold text-sm">#{index + 1}</span>
+                        </div>
+                        <div className="ml-3">
+                          <div className="text-sm font-medium text-gray-900">{company.name}</div>
+                          <div className="text-xs text-gray-500">{company.participants} participantes</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-gray-900">{company.registrations}</div>
+                        <div className="text-xs text-gray-500">inscrições</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico de Credenciamentos por Dia */}
+        <div className="mt-8">
+          <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
+              <h3 className="text-lg leading-6 font-semibold text-gray-900 flex items-center">
+                <svg className="h-6 w-6 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                Credenciamentos por Hora
+                Credenciamentos nos Últimos 7 Dias
               </h3>
             </div>
             <div className="p-6">
               <div className="h-64 relative">
-                {metrics?.credentialingByHour?.map((hour, index, array) => {
-                  const maxCount = Math.max(...array.map(h => h.count));
-                  const height = (hour.count / maxCount) * 100;
-                  const isHighest = hour.count === maxCount;
+                {chartData?.map((day, index, array) => {
+                  const maxCount = Math.max(...array.map(d => d.count), 1);
+                  const height = (day.count / maxCount) * 100;
+                  const isHighest = day.count === maxCount && day.count > 0;
                   
                   return (
                     <div
-                      key={hour.hour}
+                      key={day.date}
                       className="absolute bottom-8 group"
                       style={{
                         left: `${(index / array.length) * 100}%`,
                         width: `${90 / array.length}%`,
-                        height: `${height}%`
+                        height: `${Math.max(height, 5)}%`
                       }}
                     >
                       <div 
                         className={`h-full rounded-t transition-all duration-300 group-hover:opacity-80
-                          ${isHighest ? 'bg-purple-600' : 'bg-purple-400'}`}
+                          ${isHighest ? 'bg-blue-600' : 'bg-blue-400'}`}
                       />
                       <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-600">
-                        {hour.hour}h
+                        {day.label}
                       </div>
                       <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <div className="bg-gray-800 text-white px-2 py-1 rounded text-xs whitespace-nowrap">
-                          {hour.count} credenciamentos
+                          {day.count} credenciamentos
                         </div>
                       </div>
                     </div>
@@ -347,44 +448,6 @@ export default function DashboardContent({ isAuthenticated }) {
                 })}
                 {/* Eixo X */}
                 <div className="absolute bottom-0 left-0 right-0 h-px bg-gray-300" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Credenciamentos por Hora */}
-        <div className="mt-8">
-          <div className="bg-white shadow sm:rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">
-                Credenciamentos por Hora
-              </h3>
-              <div className="mt-5">
-                <div className="relative" style={{ height: "200px" }}>
-                  {metrics?.credentialingByHour?.map((hour, index, array) => {
-                    const maxCount = Math.max(...array.map(h => h.count));
-                    const height = (hour.count / maxCount) * 100;
-                    
-                    return (
-                      <div
-                        key={hour.hour}
-                        className="absolute bottom-0 bg-blue-500 rounded-t"
-                        style={{
-                          left: `${(index / array.length) * 100}%`,
-                          width: `${80 / array.length}%`,
-                          height: `${height}%`
-                        }}
-                      >
-                        <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 text-xs text-gray-600">
-                          {hour.count}
-                        </div>
-                        <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 text-xs text-gray-600">
-                          {hour.hour}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </div>
           </div>

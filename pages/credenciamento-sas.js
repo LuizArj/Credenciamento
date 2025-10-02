@@ -84,7 +84,7 @@ const ConfigurationScreen = ({ onSessionStart }) => {
         }
     };
 
-    const handleStart = () => {
+    const handleStart = async () => {
         if (!selectedEvent) {
             setError('Selecione um evento válido.');
             return;
@@ -93,13 +93,51 @@ const ConfigurationScreen = ({ onSessionStart }) => {
             setError('Usuário não autenticado.');
             return;
         }
+        
+        setLoading(true);
         setError('');
-        onSessionStart({
-            attendantName: session.user.name,
-            eventId: selectedEvent.id,
-            eventName: selectedEvent.nome,
-            eventDetails: selectedEvent
-        });
+        
+        try {
+            // Sincronizar evento SAS com banco local automaticamente
+            console.log('Sincronizando evento SAS com banco local...');
+            const syncResponse = await fetch('/api/sync-sas-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventDetails: selectedEvent })
+            });
+
+            const syncData = await syncResponse.json();
+            
+            if (!syncResponse.ok) {
+                console.error('Erro na sincronização:', syncData);
+                // Não bloqueia o fluxo - apenas loga o erro
+                console.warn('Evento não foi sincronizado, mas continuando com credenciamento SAS normal');
+            } else {
+                console.log('Evento sincronizado:', syncData.action, syncData.event?.id);
+            }
+
+            // Continuar com o fluxo normal
+            onSessionStart({
+                attendantName: session.user.name,
+                eventId: selectedEvent.id,
+                eventName: selectedEvent.nome,
+                eventDetails: selectedEvent,
+                localEventId: syncData?.event?.id // ID do evento no banco local (se sincronizado)
+            });
+            
+        } catch (err) {
+            console.error('Erro na sincronização do evento:', err);
+            // Mesmo com erro na sincronização, permite continuar
+            console.warn('Continuando sem sincronização local');
+            onSessionStart({
+                attendantName: session.user.name,
+                eventId: selectedEvent.id,
+                eventName: selectedEvent.nome,
+                eventDetails: selectedEvent
+            });
+        } finally {
+            setLoading(false);
+        }
     };
 
     const isDisabled = !selectedEvent || loading || !session?.user;
@@ -191,13 +229,32 @@ const ConfigurationScreen = ({ onSessionStart }) => {
                         <div className="mt-4 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
                             <h3 className="font-semibold text-blue-900">Evento Selecionado:</h3>
                             <p className="text-sm text-blue-800 font-medium mt-1">{selectedEvent.nome}</p>
-                            <p className="text-xs text-blue-600 mt-2">
-                                <strong>Código do evento:</strong> {selectedEvent.id}
-                            </p>
-                            {/* Informações adicionais do evento */}
-                            <p className="text-xs text-blue-600 mt-2">
-                                <strong>Data:</strong> {new Date(selectedEvent.dataEvento).toLocaleDateString('pt-BR')}
-                            </p>
+                            <div className="mt-3 space-y-2 text-xs text-blue-600">
+                                <p><strong>Código do evento:</strong> {selectedEvent.id}</p>
+                                <p><strong>Data/Hora:</strong> {selectedEvent.dataEvento ? 
+                                    new Date(selectedEvent.dataEvento).toLocaleString('pt-BR', {
+                                        day: '2-digit',
+                                        month: '2-digit', 
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    }) : 'Data não informada'
+                                }</p>
+                                <p><strong>Local:</strong> {selectedEvent.local || 'Local não informado'}</p>
+                                <p><strong>Modalidade:</strong> {selectedEvent.modalidade || 'Não informado'}</p>
+                                <p><strong>Instrumento:</strong> {selectedEvent.instrumento || 'Não informado'}</p>
+                                <p><strong>Carga Horária:</strong> {selectedEvent.cargaHoraria}h</p>
+                                <p><strong>Participantes:</strong> {selectedEvent.minParticipante} a {selectedEvent.maxParticipante}</p>
+                                <p><strong>Vagas Disponíveis:</strong> {selectedEvent.vagasDisponiveis}</p>
+                                <p><strong>Gratuito:</strong> {selectedEvent.gratuito ? 'Sim' : 'Não'}</p>
+                                {selectedEvent.preco > 0 && (
+                                    <p><strong>Preço:</strong> R$ {selectedEvent.preco.toFixed(2)}</p>
+                                )}
+                                <p><strong>Situação:</strong> {selectedEvent.situacao}</p>
+                                {selectedEvent.projeto && (
+                                    <p><strong>Projeto:</strong> {selectedEvent.projeto}</p>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -619,6 +676,33 @@ export default function CredenciamentoSAS() {
                 throw new Error('Erro ao processar credenciamento');
             }
 
+            // ** NOVA FUNCIONALIDADE: Registrar credenciamento no banco local **
+            try {
+                console.log('Registrando credenciamento no banco local...');
+                const localRegRes = await fetch('/api/register-local-credenciamento', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        participant: participantData,
+                        eventDetails: session.eventDetails,
+                        attendantName: session.attendantName,
+                        localEventId: session.localEventId
+                    })
+                });
+
+                const localRegData = await localRegRes.json();
+                
+                if (localRegRes.ok) {
+                    console.log('Credenciamento registrado no banco local:', localRegData.message);
+                } else {
+                    console.error('Erro ao registrar no banco local:', localRegData.message);
+                    // Não bloqueia o fluxo principal - apenas loga
+                }
+            } catch (localError) {
+                console.error('Erro na comunicação com API local:', localError);
+                // Não bloqueia o fluxo principal
+            }
+
             setSuccess(true);
         } catch (error) {
             alert('Erro ao credenciar participante: ' + error.message);
@@ -688,9 +772,29 @@ export default function CredenciamentoSAS() {
                     <h2 className="text-lg font-semibold text-gray-700">
                         {session.eventName}
                     </h2>
-                    <p className="text-sm text-gray-600">
-                        Código do evento: {session.eventId}
-                    </p>
+                    <div className="mt-2 space-y-1 text-sm text-gray-600">
+                        <p><strong>Código:</strong> {session.eventId}</p>
+                        {session.eventDetails?.dataEvento && (
+                            <p><strong>Data/Hora:</strong> {
+                                new Date(session.eventDetails.dataEvento).toLocaleString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit', 
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })
+                            }</p>
+                        )}
+                        {session.eventDetails?.local && (
+                            <p><strong>Local:</strong> {session.eventDetails.local}</p>
+                        )}
+                        {session.eventDetails?.modalidade && (
+                            <p><strong>Modalidade:</strong> {session.eventDetails.modalidade}</p>
+                        )}
+                        {session.eventDetails?.vagasDisponiveis !== undefined && (
+                            <p><strong>Vagas Disponíveis:</strong> {session.eventDetails.vagasDisponiveis}</p>
+                        )}
+                    </div>
                 </div>
                 <h1 className="card-title">Credenciamento SAS</h1>
                 <p className="card-subtitle">Registre um novo participante diretamente no sistema</p>                    {success ? (

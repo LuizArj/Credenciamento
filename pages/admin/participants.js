@@ -17,40 +17,36 @@ export default function ParticipantsManagement() {
   });
 
   // Buscar participantes
-  const { data: participants, isLoading, error } = useQuery({
+  const { data: participantsResponse, isLoading, error } = useQuery({
     queryKey: ['participants'],
     queryFn: async () => {
-      const token = localStorage.getItem('adminToken');
-      if (!token) {
-        router.push('/admin/login');
-        return;
-      }
-
-      const response = await fetch('/api/admin/participants-management', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
+      const response = await fetch('/api/admin/participants');
       if (!response.ok) {
         throw new Error('Falha ao carregar participantes');
       }
-
       return response.json();
     }
   });
 
+  const participants = participantsResponse?.participants || [];
+
   // Criar participante
   const createParticipantMutation = useMutation({
     mutationFn: async (participantData) => {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('/api/admin/participants-management', {
+      const response = await fetch('/api/admin/participants', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(participantData)
+        body: JSON.stringify({
+          cpf: participantData.cpf,
+          nome: participantData.name,
+          email: participantData.email,
+          telefone: participantData.phone,
+          company: participantData.company ? {
+            razaoSocial: participantData.company
+          } : null
+        })
       });
 
       if (!response.ok) {
@@ -68,14 +64,21 @@ export default function ParticipantsManagement() {
   // Atualizar participante
   const updateParticipantMutation = useMutation({
     mutationFn: async (participantData) => {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('/api/admin/participants-management', {
+      const response = await fetch('/api/admin/participants', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(participantData)
+        body: JSON.stringify({
+          id: participantData.id,
+          cpf: participantData.cpf,
+          nome: participantData.name,
+          email: participantData.email,
+          telefone: participantData.phone,
+          company: participantData.company ? {
+            razaoSocial: participantData.company
+          } : null
+        })
       });
 
       if (!response.ok) {
@@ -93,12 +96,8 @@ export default function ParticipantsManagement() {
   // Remover participante
   const deleteParticipantMutation = useMutation({
     mutationFn: async (participantId) => {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`/api/admin/participants-management?id=${participantId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await fetch(`/api/admin/participants?id=${participantId}`, {
+        method: 'DELETE'
       });
 
       if (!response.ok) {
@@ -116,11 +115,11 @@ export default function ParticipantsManagement() {
     if (participant) {
       setEditingParticipant(participant);
       setFormData({
-        name: participant.name,
+        name: participant.nome,
         cpf: participant.cpf,
         email: participant.email,
-        phone: participant.phone,
-        company: participant.company
+        phone: participant.telefone,
+        company: participant.company?.razao_social || participant.company?.nome_fantasia || ''
       });
     } else {
       setEditingParticipant(null);
@@ -265,7 +264,7 @@ export default function ParticipantsManagement() {
                     {participants?.map((participant) => (
                       <tr key={participant.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {participant.name}
+                          {participant.nome}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {participant.cpf}
@@ -274,10 +273,10 @@ export default function ParticipantsManagement() {
                           {participant.email}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.phone}
+                          {participant.telefone}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.company}
+                          {participant.company?.razao_social || participant.company?.nome_fantasia || 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <button
