@@ -1,46 +1,81 @@
 // pages/api/ticket-categories.js
 export default async function handler(req, res) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
   const { eventId } = req.query;
 
   if (!eventId) {
     return res.status(400).json({ message: 'O ID do evento é obrigatório.' });
   }
 
-  // --- CORREÇÃO 1: URL ajustada para o endpoint correto de tickets ---
-  const apiUrl = `https://api.4.events/tickets/${eventId}/list`;
-
   try {
-    const response = await fetch(apiUrl, {
+    const response = await fetch(`https://api.4.events/tickets/${eventId}/list`, {
+      method: 'GET',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.FOUR_EVENTS_CLIENT_TOKEN}`,
-        'Accept': 'application/json',
-      }
+      },
     });
 
     if (!response.ok) {
-      console.error("Erro da API 4.events ao buscar ingressos:", await response.text());
-      throw new Error('Falha ao buscar os tipos de ingresso para este evento.');
+      console.error('Erro da API 4.events ao buscar categorias de ingresso:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('Resposta de erro completa:', errorText);
+      return res.status(500).json({ 
+        message: 'Erro ao buscar categorias de ingresso',
+        error: `HTTP ${response.status}: ${response.statusText}`,
+        details: errorText
+      });
     }
 
     const data = await response.json();
+    console.log('Resposta da API 4.events para categorias de ingresso:', data);
 
-    if (data && data.result) {
-      // --- CORREÇÃO 2: Lógica de filtro e mapeamento ajustada ---
-      const ticketCategories = data.result
-        .filter(ticket => ticket.status_label === "Ativo" && ticket.oculta_label === "Categoria visível") // Filtra apenas ingressos úteis
-        .map(ticket => ({
-          id: ticket.id,         // Campo 'id' está correto
-          name: ticket.nome,       // Corrigido de 'name' para 'nome'
-        }));
-      
-      res.status(200).json(ticketCategories);
+    // --- NOVA LÓGICA: Tratamento da resposta da API ---
+    let categories = [];
+    
+    if (Array.isArray(data)) {
+      categories = data;
+    } else if (data.result && Array.isArray(data.result)) {
+      categories = data.result; // Este é o formato correto baseado nos logs
+    } else if (data.categories && Array.isArray(data.categories)) {
+      categories = data.categories;
+    } else if (data.data && Array.isArray(data.data)) {
+      categories = data.data;
+    } else if (data.results && Array.isArray(data.results)) {
+      categories = data.results;
     } else {
-      throw new Error('A resposta da API de ingressos não continha a lista de resultados esperada.');
+      console.warn('Estrutura de resposta inesperada para categorias de ingresso:', data);
+      categories = [];
     }
-    // --- FIM DAS CORREÇÕES ---
 
+    // --- FILTRO: Apenas ingressos com periodo_atual = 1 (ativos) ---
+    const activeCategories = categories.filter(category => category.periodo_atual === 1);
+    
+    console.log('Categorias antes do filtro:', categories.length);
+    console.log('Categorias após filtro (periodo_atual = 1):', activeCategories.length);
+
+    // --- FORMATAÇÃO: Transformar categorias para o formato esperado ---
+    const formattedCategories = activeCategories.map(category => ({
+      id: category.id,
+      name: category.nome,
+      price: parseFloat(category.valor_lote_atual || category.valor_1 || 0),
+      description: category.status_label || '',
+      available: category.status === 1,
+      periodo_atual: category.periodo_atual, // Manter para debug
+      vagas: parseInt(category.vagas || 0),
+      lote_atual: category.lote_atual,
+      status_label: category.status_label,
+    }));
+
+    return res.status(200).json(formattedCategories);
   } catch (error) {
-    console.error("Erro interno na API de ingressos:", error);
-    res.status(500).json({ message: error.message });
+    console.error('Erro interno na API de categorias de ingresso:', error);
+    return res.status(500).json({ 
+      message: 'Erro interno na API de categorias de ingresso',
+      error: error.message 
+    });
   }
 }

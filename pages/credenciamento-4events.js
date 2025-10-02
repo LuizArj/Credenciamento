@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { validateCPF, formatCPF, formatCNPJ, formatPhone, unformatPhone } from '../utils/validators';
-import { useSession } from 'next-auth/react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 
 // --- LISTA DE OPÇÕES (EDITÁVEL) ---
 const VINCULO_OPTIONS = [
@@ -209,18 +209,35 @@ const ConfirmationScreen = ({ initialParticipant, onCancel, session, onCredentia
     const handleCnpjChange = (e) => setCnpj(formatCNPJ(e.target.value));
 
     const handleCredentialing = async (e) => {
-        e.preventDefault(); setLoading(true);
+        e.preventDefault(); 
+        setLoading(true);
         try {
             const payload = {
-                ...participant, company, vinculo, consentGiven,
-                atendente: session.attendantName, ticketId: session.ticketId
+                ...participant, 
+                company, 
+                vinculo, 
+                consentGiven,
+                atendente: session.attendantName, 
+                ticketId: session.ticketId,
+                eventId: session.eventId
             };
-            const res = await fetch('/api/credentialing', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+            
+            // Register in 4.events first
+            const res = await fetch('/api/4events-register', {
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
+            
+            // Send to N8N webhook
+            await fetch('/api/webhook-notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...payload, registrationId: data.registrationId }),
+            });
+            
             onCredentialingSuccess(participant.email);
         } catch (err) {
             alert(`Erro no Credenciamento: ${err.message}`);
@@ -244,6 +261,7 @@ const ConfirmationScreen = ({ initialParticipant, onCancel, session, onCredentia
 };
 
 export default function HomePage() {
+  const { data: authSession, status } = useSession();
   const [session, setSession] = useState(null);
   const [cpf, setCpf] = useState('');
   const [participant, setParticipant] = useState(null);
@@ -308,7 +326,8 @@ export default function HomePage() {
     setLoading(true);
     
     try {
-      const checkRes = await fetch('/api/check-participant', {
+      // Step 1: Check if already registered in 4.events
+      const checkRes = await fetch('/api/4events-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cpf, eventId: session.eventId }),
@@ -319,25 +338,59 @@ export default function HomePage() {
         return;
       }
 
-      const searchRes = await fetch('/api/search', {
+      // Step 2: Search in SAS
+      const sasRes = await fetch('/api/search-sas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cpf: cpf.replace(/\D/g, '') }),
       });
-      const searchData = await searchRes.json();
-      if (searchRes.status === 404) {
-        window.open(searchData.fallbackUrl, '_blank');
-        setError('CPF não encontrado. O cadastro manual foi aberto em uma nova aba.');
+      
+      if (sasRes.ok) {
+        const sasData = await sasRes.json();
+        setParticipant({ ...sasData, source: 'sas' });
         return;
       }
-      if (!searchRes.ok) throw new Error(searchData.message || 'Erro ao buscar participante.');
-      setParticipant(searchData);
+
+      // Step 3: Search in CPE
+      const cpeRes = await fetch('/api/search-cpe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: cpf.replace(/\D/g, '') }),
+      });
+      
+      if (cpeRes.ok) {
+        const cpeData = await cpeRes.json();
+        setParticipant({ ...cpeData, source: 'cpe' });
+        return;
+      }
+
+      // Step 4: No data found, open manual registration
+      const fallbackUrl = process.env.NEXT_PUBLIC_FALLBACK_URL;
+      window.open(fallbackUrl, '_blank');
+      setError('CPF não encontrado. O cadastro manual foi aberto em uma nova aba.');
+      
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // Check authentication after all hooks
+  if (status === 'loading') return <div>Carregando...</div>;
+  if (status === 'unauthenticated') {
+    return (
+      <div className="app-container">
+        <div className="card">
+          <h1 className="card-title">Acesso Negado</h1>
+          <p className="card-subtitle">Você precisa estar logado para acessar esta página.</p>
+          <button onClick={() => signIn('keycloak')} className="btn btn-primary">
+            Fazer Login
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   if (!session) {
     return <ConfigurationScreen onSessionStart={handleSessionStart} />;
