@@ -13,27 +13,40 @@ const VINCULO_OPTIONS = [
 const InitialScreen = ({ onSearch, cpf, setCpf, loading, error }) => {
     const handleCpfChange = (e) => { setCpf(formatCPF(e.target.value)); };
     return (
-        <div className="form-group">
+        <div className="space-y-6">
             <div>
-                <label htmlFor="cpf" className="form-label">CPF do Participante</label>
+                <label htmlFor="cpf" className="block text-white font-medium mb-2">
+                    CPF do Participante
+                </label>
                 <input
                     id="cpf"
                     type="text"
                     value={cpf}
                     onChange={handleCpfChange}
-                    className="form-input"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
                     placeholder="000.000.000-00"
                     maxLength={14}
+                    disabled={loading}
                 />
             </div>
+            
+            {error && (
+                <div className="bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl p-4">
+                    <p className="text-red-200 text-sm">{error}</p>
+                </div>
+            )}
+            
             <button 
                 onClick={onSearch}
                 disabled={loading || !cpf}
-                className="btn btn-primary w-full mt-4"
+                className={`w-full py-3 px-6 rounded-xl font-semibold transition-all duration-200 ${
+                    loading || !cpf
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed border border-white/10'
+                        : 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+                } backdrop-blur-sm`}
             >
                 {loading ? 'Buscando...' : 'Buscar Participante'}
             </button>
-            {error && <p className="feedback-error">{error}</p>}
         </div>
     );
 };
@@ -107,61 +120,61 @@ const ConfirmationScreen = ({ participant, onConfirm, onCancel }) => {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-lg font-semibold text-gray-800">Confirme os dados para o QR Code</h2>
-                <span className="text-xs font-bold text-white bg-gray-500 px-2 py-1 rounded-full">
+        <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white">Confirme os dados para o QR Code</h2>
+                <span className="text-xs font-bold text-gray-800 bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm">
                     Fonte: {participant.source?.toUpperCase()}
                 </span>
             </div>
             
             <div>
-                <label className="block text-sm font-medium text-gray-700">Nome Completo</label>
+                <label className="block text-white font-medium mb-2">Nome Completo</label>
                 <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="form-input w-full mt-1"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
                     required
                     maxLength={100}
                 />
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">CPF</label>
+                <label className="block text-white font-medium mb-2">CPF</label>
                 <input
                     type="text"
                     name="cpf"
                     value={formData.cpf}
                     onChange={handleChange}
-                    className="form-input w-full mt-1"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
                     required
                     maxLength={14}
                 />
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">E-mail</label>
+                <label className="block text-white font-medium mb-2">E-mail</label>
                 <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="form-input w-full mt-1"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
                     required
                     maxLength={254}
                 />
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Telefone</label>
+                <label className="block text-white font-medium mb-2">Telefone</label>
                 <input
                     type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
-                    className="form-input w-full mt-1"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
                     required
                     placeholder="(99) 99999-9999"
                     maxLength={15}
@@ -169,18 +182,18 @@ const ConfirmationScreen = ({ participant, onConfirm, onCancel }) => {
             </div>
 
             {/* Seção de Empresa */}
-            <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Empresa Vinculada</label>
+            <div className="space-y-3">
+                <label className="block text-white font-medium">Empresa Vinculada</label>
                 {formData.company ? (
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="font-medium">{formData.company.razaoSocial}</p>
-                        <p className="text-sm text-gray-600">
+                    <div className="p-4 bg-white/10 border border-white/20 rounded-xl backdrop-blur-sm">
+                        <p className="font-medium text-white">{formData.company.razaoSocial}</p>
+                        <p className="text-sm text-white/70 mt-1">
                             CNPJ: {formData.company.cnpj} • Cargo: {formData.company.cargo}
                         </p>
                         <button
                             type="button"
                             onClick={() => setShowCompanySelect(true)}
-                            className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                            className="mt-2 text-sm text-blue-300 hover:text-blue-200 underline"
                         >
                             Alterar empresa
                         </button>
@@ -189,7 +202,7 @@ const ConfirmationScreen = ({ participant, onConfirm, onCancel }) => {
                     <button
                         type="button"
                         onClick={() => setShowCompanySelect(true)}
-                        className="w-full p-2 text-center border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-800"
+                        className="w-full p-4 text-center border-2 border-dashed border-white/30 rounded-xl text-white/70 hover:border-white/50 hover:text-white transition-all backdrop-blur-sm"
                     >
                         + Vincular Empresa
                     </button>
@@ -197,9 +210,9 @@ const ConfirmationScreen = ({ participant, onConfirm, onCancel }) => {
 
                 {/* Modal de seleção de empresa */}
                 {showCompanySelect && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                        <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
-                            <h3 className="text-lg font-semibold mb-4">Selecionar Empresa</h3>
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                        <div className="bg-white/95 backdrop-blur-md rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto border border-white/20">
+                            <h3 className="text-lg font-semibold mb-4 text-gray-800">Selecionar Empresa</h3>
                             
                             {/* Empresas vinculadas */}
                             <div className="space-y-2 mb-6">
@@ -300,17 +313,17 @@ const ConfirmationScreen = ({ participant, onConfirm, onCancel }) => {
                 )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pt-4">
+            <div className="grid grid-cols-2 gap-4 pt-6">
                 <button
                     type="submit"
-                    className="btn btn-primary"
+                    className="w-full bg-white/20 hover:bg-white/30 text-white font-semibold py-3 px-6 rounded-xl backdrop-blur-sm border border-white/30 transition-all duration-200"
                 >
                     Gerar QR Code
                 </button>
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="btn btn-secondary"
+                    className="w-full bg-white/5 hover:bg-white/10 text-white font-semibold py-3 px-6 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-200"
                 >
                     Cancelar
                 </button>
@@ -351,18 +364,18 @@ const QRCodeLabel = ({ participantData, onNewSearch }) => {
     };
 
     return (
-        <div className="space-y-4 animate-fade-in">
-            <div className="flex flex-col items-center space-y-4">
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-col items-center space-y-6">
                 {/* Editor de nome de exibição */}
                 <div className="w-full">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-white font-medium mb-2">
                         Nome na Etiqueta
                     </label>
                     <input
                         type="text"
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
-                        className="form-input w-full"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
                         placeholder="Como o nome deve aparecer na etiqueta"
                         maxLength={50}
                     />
@@ -370,10 +383,10 @@ const QRCodeLabel = ({ participantData, onNewSearch }) => {
 
                 {/* QR Code */}
                 {/* Container para visualização na tela */}
-                <div className="screen-view mb-4">
-                    <div className="qr-code-container p-4 bg-white rounded-lg shadow-lg max-w-[600px] mx-auto">
-                        <div className="flex flex-col sm:flex-row gap-4 items-start">
-                            <div className="qr-wrapper flex-shrink-0">
+                <div className="w-full mb-6">
+                    <div className="p-6 bg-white/95 backdrop-blur-md rounded-xl shadow-lg max-w-[600px] mx-auto border border-white/20">
+                        <div className="flex flex-col sm:flex-row gap-6 items-start">
+                            <div className="flex-shrink-0 mx-auto sm:mx-0">
                                 <QRCode
                                     value={generateVCard()}
                                     size={180}
@@ -385,7 +398,7 @@ const QRCodeLabel = ({ participantData, onNewSearch }) => {
                                 />
                             </div>
                             <div className="flex-1 text-center sm:text-left min-w-0 pt-2">
-                                <p className="font-bold text-xl leading-tight break-words max-w-[300px]">
+                                <p className="font-bold text-xl leading-tight break-words max-w-[300px] text-gray-800">
                                     {displayName}
                                 </p>
                                 {participantData.company?.razaoSocial && (
@@ -652,34 +665,54 @@ export default function QRCodeSebrae() {
     };
 
     return (
-        <>
+        <div className="min-h-screen bg-gradient-to-br from-[#1E67C3] to-[#0A4DA6] flex flex-col">
             <Header />
-            <div className="app-container pt-24 pb-8">
-                <div className="card">
-                    <p className="card-subtitle">Gere o QR Code com os dados do participante</p>
-                
-                {confirmedData ? (
-                    <QRCodeLabel
-                        participantData={confirmedData}
-                        onNewSearch={handleNewSearch}
-                    />
-                ) : participant ? (
-                    <ConfirmationScreen
-                        participant={participant}
-                        onConfirm={data => setConfirmedData(data)}
-                        onCancel={handleNewSearch}
-                    />
-                ) : (
-                    <InitialScreen
-                        onSearch={handleSearch}
-                        cpf={cpf}
-                        setCpf={setCpf}
-                        loading={loading}
-                        error={error}
-                    />
-                )}
-            </div>
+            
+            <main className="flex-1 flex items-center justify-center px-4 py-8">
+                <div className="w-full max-w-2xl">
+                    <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-8">
+                        <h1 className="text-2xl font-semibold text-white text-center mb-2">
+                            Gerador de QR Code
+                        </h1>
+                        <p className="text-white/80 text-center mb-8">
+                            Gere o QR Code com os dados do participante
+                        </p>
+                        
+                        {confirmedData ? (
+                            <QRCodeLabel
+                                participantData={confirmedData}
+                                onNewSearch={handleNewSearch}
+                            />
+                        ) : participant ? (
+                            <ConfirmationScreen
+                                participant={participant}
+                                onConfirm={data => setConfirmedData(data)}
+                                onCancel={handleNewSearch}
+                            />
+                        ) : (
+                            <InitialScreen
+                                onSearch={handleSearch}
+                                cpf={cpf}
+                                setCpf={setCpf}
+                                loading={loading}
+                                error={error}
+                            />
+                        )}
+                    </div>
+                </div>
+            </main>
+
+            {/* Footer */}
+            <footer className="w-full p-4 text-center text-white/60 text-sm">
+                © {new Date().getFullYear()} Sebrae - Gerador de QR Code
+            </footer>
+
+            {/* Loading Overlay */}
+            {loading && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-white"></div>
+                </div>
+            )}
         </div>
-        </>
     );
 }

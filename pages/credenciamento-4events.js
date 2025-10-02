@@ -13,7 +13,7 @@ const VINCULO_OPTIONS = [
 // O código completo está no final do arquivo.
 
 const Header = ({ attendantName, onEndShift }) => (
-    <header className="w-full bg-sebrae-blue-dark p-4 shadow-lg flex justify-between items-center fixed top-0 left-0 z-10">
+    <header className="w-full bg-white/10 backdrop-blur-md border-b border-white/20 p-4 flex justify-between items-center">
         <div className="w-1/3 flex items-center space-x-4">
             <img src="/sebrae-logo-white.png" alt="Logo Sebrae" className="h-8" />
             <button 
@@ -26,8 +26,17 @@ const Header = ({ attendantName, onEndShift }) => (
                 Voltar ao Menu
             </button>
         </div>
-        <div className="w-1/3 text-center"><span className="text-white text-sm font-semibold hidden sm:block">Atendente: {attendantName}</span></div>
-        <div className="w-1/3 flex justify-end"><button onClick={onEndShift} className="bg-sebrae-danger-red hover:bg-sebrae-danger-red-hover text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">Encerrar Turno</button></div>
+        <div className="w-1/3 text-center">
+            <span className="text-white text-sm font-semibold hidden sm:block">Atendente: {attendantName}</span>
+        </div>
+        <div className="w-1/3 flex justify-end">
+            <button 
+                onClick={onEndShift} 
+                className="bg-red-500/80 hover:bg-red-600/80 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all backdrop-blur-sm border border-red-400/30"
+            >
+                Encerrar Turno
+            </button>
+        </div>
     </header>
 );
 
@@ -127,16 +136,57 @@ const ConfigurationScreen = ({ onSessionStart }) => {
 const InitialScreen = ({ onSearch, cpf, setCpf, loading, error }) => {
     const handleCpfChange = (e) => { setCpf(formatCPF(e.target.value)); };
     return (
-        <div className="form-group"><div><label htmlFor="cpf" className="form-label">CPF do Participante</label><input id="cpf" type="text" value={cpf} onChange={handleCpfChange} className="form-input" placeholder="000.000.000-00"/></div><button onClick={onSearch} disabled={loading || !cpf} className="btn btn-primary">{loading ? 'Buscando...' : 'Buscar Participante'}</button>{error && <p className="feedback-error">{error}</p>}</div>
+        <div className="space-y-6">
+            <div>
+                <label htmlFor="cpf" className="block text-white font-medium mb-2">
+                    CPF do Participante
+                </label>
+                <input
+                    id="cpf"
+                    type="text"
+                    value={cpf}
+                    onChange={handleCpfChange}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent transition-all"
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                    disabled={loading}
+                />
+            </div>
+            
+            {error && (
+                <div className="bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl p-4">
+                    <p className="text-red-200 text-sm">{error}</p>
+                </div>
+            )}
+            
+            <button 
+                onClick={onSearch}
+                disabled={loading || !cpf}
+                className={`w-full py-3 px-6 rounded-xl font-semibold transition-all duration-200 ${
+                    loading || !cpf
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed border border-white/10'
+                        : 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+                } backdrop-blur-sm`}
+            >
+                {loading ? 'Buscando...' : 'Buscar Participante'}
+            </button>
+        </div>
     );
 };
 
 const SuccessScreen = ({ onCopyAndNewSearch, email }) => (
     <div className="text-center space-y-6 animate-fade-in">
-        <svg className="mx-auto h-16 w-16 text-sebrae-green" width="64" height="64" fill="none" viewBox="0 0 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        <h2 className="text-2xl font-bold text-gray-800">Credenciamento Realizado!</h2>
-        <p className="text-gray-600">O participante foi cadastrado com sucesso.</p>
-        <button onClick={() => onCopyAndNewSearch(email)} className="btn btn-primary">Copiar E-mail e Abrir Painel</button>
+        <svg className="mx-auto h-16 w-16 text-green-300" width="64" height="64" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h2 className="text-2xl font-bold text-white">Credenciamento Realizado!</h2>
+        <p className="text-white/80">O participante foi cadastrado com sucesso.</p>
+        <button 
+            onClick={() => onCopyAndNewSearch(email)} 
+            className="w-full bg-white/20 hover:bg-white/30 text-white font-semibold py-3 px-6 rounded-xl backdrop-blur-sm border border-white/30 transition-all duration-200"
+        >
+            Copiar E-mail e Abrir Painel
+        </button>
     </div>
 );
 
@@ -397,39 +447,61 @@ export default function HomePage() {
   }
 
   return (
-    <>
+    <div className="min-h-screen bg-gradient-to-br from-[#1E67C3] to-[#0A4DA6] flex flex-col">
       <Header attendantName={session.attendantName} onEndShift={handleEndShift} />
-      <div className="app-container pt-24 pb-8">
-        <div className="card">
-          <h1 className="card-title">{session.eventName}</h1>
-          <p className="card-subtitle">Digite o CPF do participante para iniciar</p>
-          
-          {success ? (
-            <SuccessScreen onNewSearch={handleNewSearch} onCopyAndNewSearch={handleCopyAndOpenPanel} email={lastEmail} />
-          ) : alreadyRegistered ? (
-            <div className="text-center space-y-4 animate-fade-in">
-              <h2 className="text-2xl font-bold text-orange-600">Participante Já Inscrito!</h2>
-              <p className="text-gray-600">Este CPF já consta na lista de inscritos do evento.</p>
-              <div className="text-left bg-gray-100 p-4 rounded-lg">
-                <p><strong>Nome:</strong> {alreadyRegistered.name}</p>
-                <p><strong>E-mail:</strong> {alreadyRegistered.email}</p>
-              </div>
-              <button onClick={() => handleCopyAndOpenPanel(alreadyRegistered.email)} className="btn btn-primary">
-                Copiar E-mail e Abrir Painel
-              </button>
+      
+      <main className="flex-1 flex items-center justify-center px-4 py-8">
+          <div className="w-full max-w-2xl">
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-8">
+              <h1 className="text-2xl font-semibold text-white text-center mb-2">
+                {session.eventName}
+              </h1>
+              <p className="text-white/80 text-center mb-8">
+                Digite o CPF do participante para iniciar
+              </p>
+              
+              {success ? (
+                <SuccessScreen onNewSearch={handleNewSearch} onCopyAndNewSearch={handleCopyAndOpenPanel} email={lastEmail} />
+              ) : alreadyRegistered ? (
+                <div className="text-center space-y-6 animate-fade-in">
+                  <h2 className="text-2xl font-bold text-orange-300">Participante Já Inscrito!</h2>
+                  <p className="text-white/80">Este CPF já consta na lista de inscritos do evento.</p>
+                  <div className="text-left bg-white/10 border border-white/20 backdrop-blur-sm p-4 rounded-xl">
+                    <p className="text-white"><strong>Nome:</strong> {alreadyRegistered.name}</p>
+                    <p className="text-white"><strong>E-mail:</strong> {alreadyRegistered.email}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleCopyAndOpenPanel(alreadyRegistered.email)} 
+                    className="w-full bg-white/20 hover:bg-white/30 text-white font-semibold py-3 px-6 rounded-xl backdrop-blur-sm border border-white/30 transition-all duration-200"
+                  >
+                    Copiar E-mail e Abrir Painel
+                  </button>
+                </div>
+              ) : participant ? (
+                <ConfirmationScreen
+                  initialParticipant={participant}
+                  onCancel={handleNewSearch}
+                  session={session}
+                  onCredentialingSuccess={onCredentialingSuccess}
+                />
+              ) : (
+                <InitialScreen onSearch={handleSearch} cpf={cpf} setCpf={setCpf} loading={loading} error={error} />
+              )}
             </div>
-          ) : participant ? (
-            <ConfirmationScreen
-              initialParticipant={participant}
-              onCancel={handleNewSearch}
-              session={session}
-              onCredentialingSuccess={onCredentialingSuccess}
-            />
-          ) : (
-            <InitialScreen onSearch={handleSearch} cpf={cpf} setCpf={setCpf} loading={loading} error={error} />
-          )}
-        </div>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="w-full p-4 text-center text-white/60 text-sm">
+          © {new Date().getFullYear()} Sebrae - Credenciamento 4Events
+        </footer>
+
+        {/* Loading Overlay */}
+        {loading && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-white"></div>
+          </div>
+        )}
       </div>
-    </>
   );
 }

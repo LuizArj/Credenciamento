@@ -11,10 +11,19 @@ const VINCULO_OPTIONS = [
 
 // --- COMPONENTES DA UI ---
 const Header = ({ attendantName, onEndShift }) => (
-    <header className="w-full bg-sebrae-blue-dark p-4 shadow-lg flex justify-between items-center fixed top-0 left-0 z-10">
-    <div className="w-1/3"><img src="/sebrae-logo-white.png" alt="Logo Sebrae" className="h-8" /></div>
-        <div className="w-1/3 text-center"><span className="text-white text-sm font-semibold hidden sm:block">Atendente: {attendantName}</span></div>
-        <div className="w-1/3 flex justify-end"><button onClick={onEndShift} className="bg-sebrae-danger-red hover:bg-sebrae-danger-red-hover text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">Encerrar Turno</button></div>
+    <header className="w-full p-4 flex justify-between items-center">
+        <img src="/sebrae-logo-white.png" alt="Sebrae" className="h-10 transition-transform hover:scale-105" />
+        <div className="text-center">
+            <span className="text-white text-sm font-medium hidden sm:block">
+                Atendente: {attendantName}
+            </span>
+        </div>
+        <button 
+            onClick={onEndShift} 
+            className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 text-sm font-medium"
+        >
+            Encerrar Turno
+        </button>
     </header>
 );
 
@@ -143,136 +152,167 @@ const ConfigurationScreen = ({ onSessionStart }) => {
     const isDisabled = !selectedEvent || loading || !session?.user;
 
     return (
-        <div className="app-container">
-            <div className="card">
-                <div className="flex justify-between items-center mb-6">
-                    <button
-                        onClick={handleBackToMenu}
-                        className="text-gray-600 hover:text-gray-800 flex items-center gap-2"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-                        </svg>
-                        Voltar ao Menu
-                    </button>
-                </div>
-                <h1 className="card-title">Configuração do Credenciamento SAS</h1>
-                <p className="card-subtitle">Configure sua sessão para iniciar o credenciamento.</p>
-                <div className="form-group">
-                    {/* Nome do usuário logado via Keycloak */}
-                    <div className="bg-blue-50 p-4 rounded-lg mb-4">
-                        <p className="text-sm text-blue-800">
-                            Usuário: <strong>{session?.user?.name || 'Não autenticado'}</strong>
+        <div className="min-h-screen bg-gradient-to-br from-[#1E67C3] to-[#0A4DA6] flex flex-col">
+            {/* Header com Logo */}
+            <header className="w-full p-4 flex justify-between items-center">
+                <img src="/sebrae-logo-white.png" alt="Sebrae" className="h-10 transition-transform hover:scale-105" />
+                <button
+                    onClick={handleBackToMenu}
+                    className="text-white/80 hover:text-white flex items-center gap-2 transition-colors"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+                    </svg>
+                    Voltar ao Menu
+                </button>
+            </header>
+
+            {/* Conteúdo Principal */}
+            <main className="flex-1 flex items-center justify-center px-4 py-8">
+                <div className="w-full max-w-2xl">
+                    <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-8">
+                        <h1 className="text-2xl font-semibold text-white text-center mb-2">
+                            Configuração do Credenciamento SAS
+                        </h1>
+                        <p className="text-white/80 text-center mb-8">
+                            Configure sua sessão para iniciar o credenciamento
                         </p>
-                    </div>
-                    <div className="space-y-4">
-                        <div className="w-full">
-                            <label htmlFor="eventCode" className="block text-sm font-medium text-gray-700 mb-1">
-                                Código do Evento SAS
-                            </label>
-                            <input
-                                id="eventCode"
-                                type="text"
-                                inputMode="numeric" // Pede o teclado numérico em mobile
-                                pattern="[0-9]*"
-                                value={eventCode}
-                                onChange={e => setEventCode(e.target.value)}
-                                className="form-input w-full text-lg font-medium"
-                                placeholder="Digite o código do evento"
-                                maxLength={12} 
-                            />
+
+                        {/* Nome do usuário logado */}
+                        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 mb-6">
+                            <p className="text-white text-sm">
+                                Usuário: <strong>{session?.user?.name || 'Não autenticado'}</strong>
+                            </p>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div>
+                                <label htmlFor="eventCode" className="block text-sm font-medium text-white mb-2">
+                                    Código do Evento SAS
+                                </label>
+                                <input
+                                    id="eventCode"
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={eventCode}
+                                    onChange={e => setEventCode(e.target.value)}
+                                    className="w-full bg-white/10 text-white placeholder-white/50 py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 text-lg font-medium"
+                                    placeholder="Digite o código do evento"
+                                    maxLength={12}
+                                    disabled={loading}
+                                />
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="startDate" className="block text-sm font-medium text-white mb-2">
+                                        Data Inicial
+                                    </label>
+                                    <input
+                                        id="startDate"
+                                        type="date"
+                                        value={startDate}
+                                        onChange={e => setStartDate(e.target.value)}
+                                        className="w-full bg-white/10 text-white py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+                                        disabled={loading}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="endDate" className="block text-sm font-medium text-white mb-2">
+                                        Data Final
+                                    </label>
+                                    <input
+                                        id="endDate"
+                                        type="date"
+                                        value={endDate}
+                                        onChange={e => setEndDate(e.target.value)}
+                                        className="w-full bg-white/10 text-white py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+                                        disabled={loading}
+                                    />
+                                </div>
+                            </div>
+                        
+                            <button
+                                onClick={handleSearchEvent}
+                                disabled={loading || !eventCode || !startDate || !endDate}
+                                className={`w-full mt-6 py-3 px-4 rounded-xl font-medium transition-all duration-300 ${
+                                    !eventCode || !startDate || !endDate
+                                        ? 'bg-white/5 text-white/40 cursor-not-allowed border border-white/10'
+                                        : loading
+                                            ? 'bg-white/20 text-white cursor-wait border border-white/20'
+                                            : 'bg-white/20 hover:bg-white/30 text-white border border-white/20'
+                                }`}
+                            >
+                                {loading ? 'Buscando...' : 'Buscar Evento'}
+                            </button>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Data Inicial
-                                </label>
-                                <input
-                                    id="startDate"
-                                    type="date"
-                                    value={startDate}
-                                    onChange={e => setStartDate(e.target.value)}
-                                    className="form-input w-full"
-                                />
+                        {selectedEvent && (
+                            <div className="mt-6 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4">
+                                <h3 className="font-semibold text-white mb-2">Evento Selecionado:</h3>
+                                <p className="text-white font-medium mb-3">{selectedEvent.nome}</p>
+                                <div className="space-y-2 text-sm text-white/80">
+                                    <p><strong>Código:</strong> {selectedEvent.id}</p>
+                                    <p><strong>Data/Hora:</strong> {selectedEvent.dataEvento ? 
+                                        new Date(selectedEvent.dataEvento).toLocaleString('pt-BR', {
+                                            day: '2-digit',
+                                            month: '2-digit', 
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        }) : 'Data não informada'
+                                    }</p>
+                                    <p><strong>Local:</strong> {selectedEvent.local || 'Local não informado'}</p>
+                                    <p><strong>Modalidade:</strong> {selectedEvent.modalidade || 'Não informado'}</p>
+                                    <p><strong>Instrumento:</strong> {selectedEvent.instrumento || 'Não informado'}</p>
+                                    <p><strong>Carga Horária:</strong> {selectedEvent.cargaHoraria}h</p>
+                                    <p><strong>Participantes:</strong> {selectedEvent.minParticipante} a {selectedEvent.maxParticipante}</p>
+                                    <p><strong>Vagas Disponíveis:</strong> {selectedEvent.vagasDisponiveis}</p>
+                                    <p><strong>Gratuito:</strong> {selectedEvent.gratuito ? 'Sim' : 'Não'}</p>
+                                    {selectedEvent.preco > 0 && (
+                                        <p><strong>Preço:</strong> R$ {selectedEvent.preco.toFixed(2)}</p>
+                                    )}
+                                    <p><strong>Situação:</strong> {selectedEvent.situacao}</p>
+                                    {selectedEvent.projeto && (
+                                        <p><strong>Projeto:</strong> {selectedEvent.projeto}</p>
+                                    )}
+                                </div>
                             </div>
-                            <div>
-                                <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Data Final
-                                </label>
-                                <input
-                                    id="endDate"
-                                    type="date"
-                                    value={endDate}
-                                    onChange={e => setEndDate(e.target.value)}
-                                    className="form-input w-full"
-                                />
+                        )}
+
+                        {error && (
+                            <div className="mt-4 bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl p-4">
+                                <p className="text-red-200 text-sm">{error}</p>
                             </div>
-                        </div>
+                        )}
                         
                         <button
-                            onClick={handleSearchEvent}
-                            disabled={loading || !eventCode || !startDate || !endDate}
-                            className={`w-full transition-colors ${
-                                !eventCode || !startDate || !endDate
-                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    : loading
-                                        ? 'bg-gray-400 text-white cursor-wait'
-                                        : 'bg-gray-700 hover:bg-gray-800 text-white'
-                            } py-2 px-4 rounded-lg font-medium`}
+                            onClick={handleStart}
+                            disabled={!selectedEvent || loading || !session?.user}
+                            className={`w-full mt-6 py-3 px-4 rounded-xl font-medium transition-all duration-300 ${
+                                !selectedEvent || loading || !session?.user
+                                    ? 'bg-white/5 text-white/40 cursor-not-allowed border border-white/10'
+                                    : 'bg-blue-500/80 hover:bg-blue-600/80 text-white border border-blue-400/30'
+                            }`}
                         >
-                            {loading ? 'Buscando...' : 'Buscar Evento'}
+                            {loading ? 'Carregando...' : 'Iniciar Turno'}
                         </button>
                     </div>
-                    
-                    {selectedEvent && (
-                        <div className="mt-4 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                            <h3 className="font-semibold text-blue-900">Evento Selecionado:</h3>
-                            <p className="text-sm text-blue-800 font-medium mt-1">{selectedEvent.nome}</p>
-                            <div className="mt-3 space-y-2 text-xs text-blue-600">
-                                <p><strong>Código do evento:</strong> {selectedEvent.id}</p>
-                                <p><strong>Data/Hora:</strong> {selectedEvent.dataEvento ? 
-                                    new Date(selectedEvent.dataEvento).toLocaleString('pt-BR', {
-                                        day: '2-digit',
-                                        month: '2-digit', 
-                                        year: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                    }) : 'Data não informada'
-                                }</p>
-                                <p><strong>Local:</strong> {selectedEvent.local || 'Local não informado'}</p>
-                                <p><strong>Modalidade:</strong> {selectedEvent.modalidade || 'Não informado'}</p>
-                                <p><strong>Instrumento:</strong> {selectedEvent.instrumento || 'Não informado'}</p>
-                                <p><strong>Carga Horária:</strong> {selectedEvent.cargaHoraria}h</p>
-                                <p><strong>Participantes:</strong> {selectedEvent.minParticipante} a {selectedEvent.maxParticipante}</p>
-                                <p><strong>Vagas Disponíveis:</strong> {selectedEvent.vagasDisponiveis}</p>
-                                <p><strong>Gratuito:</strong> {selectedEvent.gratuito ? 'Sim' : 'Não'}</p>
-                                {selectedEvent.preco > 0 && (
-                                    <p><strong>Preço:</strong> R$ {selectedEvent.preco.toFixed(2)}</p>
-                                )}
-                                <p><strong>Situação:</strong> {selectedEvent.situacao}</p>
-                                {selectedEvent.projeto && (
-                                    <p><strong>Projeto:</strong> {selectedEvent.projeto}</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {error && <p className="feedback-error">{error}</p>}
-                    
-                    <button
-                        onClick={handleStart}
-                        disabled={!selectedEvent || loading || !session?.user}
-                        className={`w-full mt-4 transition-colors ${
-                            !selectedEvent || loading || !session?.user
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white'
-                        } py-2 px-4 rounded-lg font-medium`}
-                    >
-                        {loading ? 'Carregando...' : 'Iniciar Turno'}
-                    </button>
                 </div>
-            </div>
+            </main>
+
+            {/* Footer */}
+            <footer className="w-full p-4 text-center text-white/60 text-sm">
+                © {new Date().getFullYear()} Sebrae - Sistema de Credenciamento SAS
+            </footer>
+
+            {/* Loading Overlay */}
+            {loading && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-white"></div>
+                </div>
+            )}
         </div>
     );
 };
@@ -280,22 +320,36 @@ const ConfigurationScreen = ({ onSessionStart }) => {
 const InitialScreen = ({ onSearch, cpf, setCpf, loading, error }) => {
     const handleCpfChange = (e) => { setCpf(formatCPF(e.target.value)); };
     return (
-        <div className="form-group">
+        <div className="space-y-6">
             <div>
-                <label htmlFor="cpf" className="form-label">CPF do Participante</label>
+                <label htmlFor="cpf" className="block text-sm font-medium text-white mb-2">
+                    CPF do Participante
+                </label>
                 <input
                     id="cpf"
                     type="text"
                     value={cpf}
                     onChange={handleCpfChange}
-                    className="form-input"
+                    className="w-full bg-white/10 text-white placeholder-white/50 py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 text-lg font-medium"
                     placeholder="000.000.000-00"
+                    disabled={loading}
                 />
             </div>
+            
+            {error && (
+                <div className="bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl p-4">
+                    <p className="text-red-200 text-sm">{error}</p>
+                </div>
+            )}
+            
             <button 
                 onClick={onSearch}
                 disabled={loading || !cpf}
-                className="btn btn-primary w-full mt-4"
+                className={`w-full py-3 px-4 rounded-xl font-medium transition-all duration-300 ${
+                    loading || !cpf
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed border border-white/10'
+                        : 'bg-blue-500/80 hover:bg-blue-600/80 text-white border border-blue-400/30'
+                }`}
             >
                 {loading ? 'Buscando...' : 'Buscar Participante'}
             </button>
@@ -568,13 +622,16 @@ const ParticipantForm = ({ onSubmit, loading, initialParticipant, onCancel }) =>
 };
 
 const SuccessScreen = ({ onNewRegistration }) => (
-    <div className="text-center space-y-6 animate-fade-in">
-        <svg className="mx-auto h-16 w-16 text-sebrae-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="text-center space-y-6">
+        <svg className="mx-auto h-16 w-16 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <h2 className="text-2xl font-bold text-gray-800">Participante Credenciado!</h2>
-        <p className="text-gray-600">O participante foi registrado com sucesso no sistema.</p>
-        <button onClick={onNewRegistration} className="btn btn-primary">
+        <h2 className="text-2xl font-bold text-white">Participante Credenciado!</h2>
+        <p className="text-white/80">O participante foi registrado com sucesso no sistema.</p>
+        <button 
+            onClick={onNewRegistration} 
+            className="bg-blue-500/80 hover:bg-blue-600/80 text-white py-3 px-6 rounded-xl backdrop-blur-sm border border-blue-400/30 transition-all duration-300 font-medium"
+        >
             Novo Credenciamento
         </button>
     </div>
@@ -764,16 +821,19 @@ export default function CredenciamentoSAS() {
     }
 
     return (
-        <>
+        <div className="min-h-screen bg-gradient-to-br from-[#1E67C3] to-[#0A4DA6] flex flex-col">
             <Header attendantName={session.attendantName} onEndShift={handleEndShift} />
-            <div className="app-container pt-24 pb-8">
-            <div className="card">
-                <div className="bg-white/10 p-4 rounded-lg mb-6">
-                    <h2 className="text-lg font-semibold text-gray-700">
-                        {session.eventName}
-                    </h2>
-                    <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        <p><strong>Código:</strong> {session.eventId}</p>
+            
+            <main className="flex-1 flex items-center justify-center px-4 py-8">
+                <div className="w-full max-w-2xl">
+                    <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-8">
+                        {/* Informações do Evento */}
+                        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 mb-6">
+                            <h2 className="text-lg font-semibold text-white mb-2">
+                                {session.eventName}
+                            </h2>
+                            <div className="space-y-1 text-sm text-white/80">
+                                <p><strong>Código:</strong> {session.eventId}</p>
                         {session.eventDetails?.dataEvento && (
                             <p><strong>Data/Hora:</strong> {
                                 new Date(session.eventDetails.dataEvento).toLocaleString('pt-BR', {
@@ -794,29 +854,49 @@ export default function CredenciamentoSAS() {
                         {session.eventDetails?.vagasDisponiveis !== undefined && (
                             <p><strong>Vagas Disponíveis:</strong> {session.eventDetails.vagasDisponiveis}</p>
                         )}
+                            </div>
+                        </div>
+
+                        <h1 className="text-2xl font-semibold text-white text-center mb-2">
+                            Credenciamento SAS
+                        </h1>
+                        <p className="text-white/80 text-center mb-8">
+                            Registre um novo participante diretamente no sistema
+                        </p>
+                        
+                        {success ? (
+                            <SuccessScreen onNewRegistration={handleNewRegistration} />
+                        ) : participant ? (
+                            <ParticipantForm
+                                onSubmit={handleSubmit}
+                                loading={loading}
+                                initialParticipant={participant}
+                                onCancel={handleNewRegistration}
+                            />
+                        ) : (
+                            <InitialScreen
+                                onSearch={handleSearch}
+                                cpf={cpf}
+                                setCpf={setCpf}
+                                loading={loading}
+                                error={error}
+                            />
+                        )}
                     </div>
                 </div>
-                <h1 className="card-title">Credenciamento SAS</h1>
-                <p className="card-subtitle">Registre um novo participante diretamente no sistema</p>                    {success ? (
-                        <SuccessScreen onNewRegistration={handleNewRegistration} />
-                    ) : participant ? (
-                        <ParticipantForm
-                            onSubmit={handleSubmit}
-                            loading={loading}
-                            initialParticipant={participant}
-                            onCancel={handleNewRegistration}
-                        />
-                    ) : (
-                        <InitialScreen
-                            onSearch={handleSearch}
-                            cpf={cpf}
-                            setCpf={setCpf}
-                            loading={loading}
-                            error={error}
-                        />
-                    )}
+            </main>
+
+            {/* Footer */}
+            <footer className="w-full p-4 text-center text-white/60 text-sm">
+                © {new Date().getFullYear()} Sebrae - Sistema de Credenciamento SAS
+            </footer>
+
+            {/* Loading Overlay */}
+            {loading && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-white"></div>
                 </div>
-            </div>
-        </>
+            )}
+        </div>
     );
 }
