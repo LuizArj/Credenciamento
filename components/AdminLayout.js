@@ -1,17 +1,44 @@
 import { useRouter } from 'next/router';
 import { useSession, signOut } from 'next-auth/react';
+import { useEffect } from 'react';
 import Head from 'next/head';
 import Image from 'next/image';
 import { requirePermissions } from '../utils/permissions';
 
 export default function AdminLayout({ children, title, requiredPermissions = ['manage_users'] }) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
-  // Verifica se tem permissão para acessar a área administrativa
-  if (!session || !requirePermissions(session, requiredPermissions)) {
-    router.replace('/login');
-    return null;
+  // Redireciona para login se não tiver permissão (apenas no cliente)
+  useEffect(() => {
+    if (status === 'loading') return; // Ainda carregando
+
+    if (!session) {
+      router.replace('/login');
+    } else if (!requirePermissions(session, requiredPermissions)) {
+      router.replace('/access-denied');
+    }
+  }, [session, status, router, requiredPermissions]);
+
+  // Mostra loading enquanto verifica a sessão
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-sebrae-blue mx-auto"></div>
+          <p className="mt-4 text-gray-600">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Se não tem sessão ou permissão, não renderiza nada (redirecionamento em andamento)
+  if (!session) {
+    return null; // Redirecionamento para login em andamento
+  }
+
+  if (!requirePermissions(session, requiredPermissions)) {
+    return null; // Redirecionamento para access-denied em andamento
   }
 
   const navigation = [
@@ -53,13 +80,19 @@ export default function AdminLayout({ children, title, requiredPermissions = ['m
         <div className="flex-1 flex flex-col min-h-0 bg-sebrae-blue-dark">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-4">
-              <Image
-                src="/sebrae-logo-white.png"
-                alt="Logo Sebrae"
-                width={120}
-                height={40}
-                className="h-8 w-auto"
-              />
+              <button 
+                onClick={() => router.push('/')}
+                className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sebrae-blue-dark rounded"
+                title="Voltar ao início"
+              >
+                <Image
+                  src="/sebrae-logo-white.png"
+                  alt="Logo Sebrae - Voltar ao início"
+                  width={120}
+                  height={40}
+                  className="h-8 w-auto cursor-pointer"
+                />
+              </button>
             </div>
             <nav className="mt-8 flex-1 px-2 space-y-1">
               {navigation.map((item) => {
