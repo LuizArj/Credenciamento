@@ -86,10 +86,80 @@ export const authOptions = {
       console.log('JWT Callback - Entrada:', { token, account, profile, user });
       
       if (account) {
-        // Usuário Keycloak
+        // Usuário Keycloak - verificar se precisa registrar
         token.accessToken = account.access_token;
         token.roles = profile?.roles || [];
         token.isLocalUser = false;
+        
+        // Auto-registro do usuário do Keycloak no sistema de permissões
+        try {
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabaseAdmin = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY
+          );
+
+          // Verificar se usuário já existe
+          const { data: existingUser, error: checkError } = await supabaseAdmin
+            .from('credenciamento_admin_users')
+            .select('id, keycloak_id')
+            .or(`username.eq.${token.email},keycloak_id.eq.${token.sub}`)
+            .single();
+
+          if (!existingUser) {
+            // Registrar novo usuário do Keycloak
+            console.log('Registrando novo usuário do Keycloak:', token.email);
+            const { data: newUser, error: insertError } = await supabaseAdmin
+              .from('credenciamento_admin_users')
+              .insert({
+                username: token.email,
+                email: token.email,
+                keycloak_id: token.sub,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .select('id')
+              .single();
+
+            if (!insertError && newUser) {
+              console.log('Usuário Keycloak registrado com sucesso:', newUser.id);
+              
+              // Atribuir role 'operator' por padrão para novos usuários
+              const { data: operatorRole } = await supabaseAdmin
+                .from('credenciamento_admin_roles')
+                .select('id')
+                .eq('name', 'operator')
+                .single();
+
+              if (operatorRole) {
+                await supabaseAdmin
+                  .from('credenciamento_admin_user_roles')
+                  .insert({
+                    user_id: newUser.id,
+                    role_id: operatorRole.id,
+                    created_at: new Date().toISOString()
+                  });
+                
+                token.roles = ['operator'];
+                console.log('Role operator atribuída ao novo usuário');
+              }
+            }
+          } else if (existingUser && !existingUser.keycloak_id) {
+            // Atualizar usuário existente com keycloak_id
+            await supabaseAdmin
+              .from('credenciamento_admin_users')
+              .update({ 
+                keycloak_id: token.sub,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingUser.id);
+            
+            console.log('Keycloak ID vinculado ao usuário existente');
+          }
+        } catch (error) {
+          console.error('Erro no auto-registro do Keycloak:', error);
+        }
+        
         console.log('JWT Callback - Usuário Keycloak:', token);
       } else if (user?.isLocalUser) {
         // Usuário Local
@@ -107,29 +177,55 @@ export const authOptions = {
             process.env.SUPABASE_SERVICE_KEY
           );
 
-          const { data: userData, error } = await supabaseAdmin
-            .from('credenciamento_admin_users')
-            .select(`
-              *,
-              roles:credenciamento_admin_user_roles(
-                role:credenciamento_admin_roles(
-                  name
+          let userData = null;
+          
+          // Buscar por keycloak_id primeiro, depois por username/email
+          if (token.sub) {
+            const { data: kcUser } = await supabaseAdmin
+              .from('credenciamento_admin_users')
+              .select(`
+                *,
+                roles:credenciamento_admin_user_roles(
+                  role:credenciamento_admin_roles(
+                    name
+                  )
                 )
-              )
-            `)
-            .eq('username', token.email)
-            .single();
+              `)
+              .eq('keycloak_id', token.sub)
+              .single();
+            
+            userData = kcUser;
+          }
+          
+          // Se não encontrou por keycloak_id, buscar por email/username
+          if (!userData && token.email) {
+            const { data: emailUser } = await supabaseAdmin
+              .from('credenciamento_admin_users')
+              .select(`
+                *,
+                roles:credenciamento_admin_user_roles(
+                  role:credenciamento_admin_roles(
+                    name
+                  )
+                )
+              `)
+              .eq('username', token.email)
+              .single();
+            
+            userData = emailUser;
+          }
 
-          if (!error && userData) {
+          if (userData) {
             const roles = userData.roles?.map(r => r.role.name) || [];
             console.log('Roles recuperadas do banco:', roles);
             token.roles = roles;
-            token.isLocalUser = true;
           } else {
-            console.error('Erro ao buscar roles do usuário:', error);
+            console.log('Usuário não encontrado no sistema de permissões');
+            token.roles = [];
           }
         } catch (error) {
-          console.error('Erro ao tentar recuperar roles:', error);
+          console.error('Erro ao buscar roles do usuário:', error);
+          token.roles = [];
         }
       }
       

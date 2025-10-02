@@ -50,6 +50,6 @@ export function requirePermissions(session, permissions) {
   // Se o usuário é admin, tem acesso a tudo
   if (userRoles.includes('admin')) return true;
 
-  // Se não é admin, verifica as permissões específicas
+  // Se não é admin, verifica se tem pelo menos uma das permissões necessárias
   return hasAnyPermission(userRoles, permissions);
 }

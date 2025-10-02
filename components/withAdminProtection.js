@@ -20,7 +20,7 @@ export function withAdminProtection(WrappedComponent, requiredPermissions = ['ma
 
       // Verifica se tem as permissões necessárias
       if (!requirePermissions(session, requiredPermissions)) {
-        router.replace('/admin/unauthorized');
+        router.replace('/access-denied');
         return;
       }
     }, [session, status, router]);
