@@ -49,7 +49,7 @@ export async function authenticateLocalUser(username: string, password: string):
         const { password: _, ...userWithoutPassword } = user
         
         // Estrutura as roles do usuário
-        const roles = user.user_roles.map(ur => ur.roles)
+        const roles = user.user_roles.map((ur: any) => ur.roles)
 
         return {
             data: {
@@ -193,11 +193,11 @@ export async function getLocalUsers(): Promise<ApiResponse<UserWithRoles[]>> {
         if (error) throw error
 
         // Remove senhas e estrutura roles
-        const usersWithRoles = users.map(user => {
+        const usersWithRoles = users.map((user: any) => {
             const { password: _, ...userWithoutPassword } = user
             return {
                 ...userWithoutPassword,
-                roles: user.user_roles.map(ur => ur.roles)
+                roles: user.user_roles.map((ur: any) => ur.roles)
             }
         })
 
@@ -209,7 +209,7 @@ export async function getLocalUsers(): Promise<ApiResponse<UserWithRoles[]>> {
 }
 
 // Funções para buscar e verificar roles/permissões
-export async function getUserRoles(userId: string): Promise<ApiResponse<Role[]>> {
+export async function getUserRoles(userId: string): Promise<ApiResponse<any[]>> {
     try {
         const { data, error } = await supabase
             .from('user_roles')
@@ -249,7 +249,7 @@ export async function checkUserPermission(userId: string, permissionName: string
         if (error) throw error
 
         // Verificar se o usuário tem a permissão específica
-        return permissions.some(p => p.permissions.name === permissionName)
+        return permissions.some((p: any) => p.permissions.name === permissionName)
     } catch (error) {
         console.error('Erro ao verificar permissão:', error)
         return false
@@ -272,7 +272,7 @@ export async function getEvents(type = null) {
 }
 
 // Função para registrar check-in de participante
-export async function checkInParticipant(participantId, eventId, attendantName) {
+export async function checkInParticipant(participantId: string, eventId: string, attendantName: string) {
   const { data: participant, error: participantError } = await supabase
     .from('credenciamento_participants')
     .update({ 

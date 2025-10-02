@@ -651,8 +651,8 @@ export default function CredenciamentoSAS() {
                 registrationTimestamp: new Date().toISOString()
             };
 
-            // Enviar dados para o webhook
-            const webhookRes = await fetch('https://n8nhook.rr.sebrae.com.br/webhook/Credenciamento_checkin_sistema', {
+            // Enviar dados para o webhook de check-in
+            const webhookRes = await fetch('/api/webhook-checkin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(webhookData)
