@@ -7,6 +7,7 @@ export default function Login() {
   const { data: session } = useSession();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [showLocalLogin, setShowLocalLogin] = useState(false);
   const [credentials, setCredentials] = useState({
     username: '',
     password: ''
@@ -43,6 +44,17 @@ export default function Login() {
     signIn('keycloak', { callbackUrl: '/' });
   };
 
+  const handleShowLocalLogin = () => {
+    setShowLocalLogin(true);
+    setErrorMessage('');
+  };
+
+  const handleBackToMain = () => {
+    setShowLocalLogin(false);
+    setErrorMessage('');
+    setCredentials({ username: '', password: '' });
+  };
+
   // Se estiver carregando a sessão ou já estiver autenticado, mostra loading
   if (session) {
     return (
@@ -56,14 +68,20 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-[#1E67C3] to-[#0A4DA6] flex flex-col">
       {/* Header com Logo */}
       <header className="w-full p-4">
-        <Image
-          src="/sebrae-logo-white.png"
-          alt="Sebrae"
-          width={150}
-          height={60}
-          className="transition-transform hover:scale-105"
-          priority
-        />
+        <button 
+          onClick={() => router.push('/')}
+          className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-transparent rounded"
+          title="Voltar ao início"
+        >
+          <Image
+            src="/sebrae-logo-white.png"
+            alt="Sebrae - Voltar ao início"
+            width={150}
+            height={60}
+            className="transition-transform hover:scale-105"
+            priority
+          />
+        </button>
       </header>
 
       {/* Conteúdo Principal */}
@@ -74,78 +92,108 @@ export default function Login() {
               Bem-vindo ao Sistema
             </h1>
 
-            <div className="space-y-6">
-              {/* Login Keycloak (Sebrae) */}
-              <button
-                onClick={handleKeycloakLogin}
-                disabled={isLoading}
-                className="w-full bg-white/20 hover:bg-white/30 text-white py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 flex items-center justify-center gap-2"
-              >
-                {isLoading ? 'Entrando...' : 'Login Sebrae'}
-              </button>
+            {!showLocalLogin ? (
+              // Tela Principal - Escolha do Tipo de Login
+              <div className="space-y-6">
+                {/* Botão Login Local */}
+                <button
+                  onClick={handleShowLocalLogin}
+                  disabled={isLoading}
+                  className="w-full bg-white/20 hover:bg-white/30 text-white py-4 px-6 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 flex items-center justify-center gap-3 font-medium text-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Login Local
+                </button>
 
-              {/* Divisor */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/20"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-transparent text-white/60">ou</span>
+                {/* Botão Login Corporativo */}
+                <button
+                  onClick={handleKeycloakLogin}
+                  disabled={isLoading}
+                  className="w-full bg-blue-500/80 hover:bg-blue-600/80 text-white py-4 px-6 rounded-xl backdrop-blur-sm border border-blue-400/30 transition-all duration-300 flex items-center justify-center gap-3 font-medium text-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  Login com Conta Corporativa
+                </button>
+
+                <div className="mt-6 text-center">
+                  <p className="text-white/80 text-sm">
+                    Escolha o tipo de login para continuar
+                  </p>
                 </div>
               </div>
-
-              {/* Login Local */}
-              <form onSubmit={handleLocalLogin} className="space-y-4">
-                <div>
-                  <input
-                    type="text"
-                    name="username"
-                    placeholder="Usuário"
-                    value={credentials.username}
-                    onChange={e => setCredentials({...credentials, username: e.target.value})}
-                    className="w-full bg-white/10 text-white placeholder-white/50 py-2 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    disabled={isLoading}
-                  />
-                </div>
-                <div>
-                  <input
-                    type="password"
-                    name="password"
-                    placeholder="Senha"
-                    value={credentials.password}
-                    onChange={e => setCredentials({...credentials, password: e.target.value})}
-                    className="w-full bg-white/10 text-white placeholder-white/50 py-2 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    disabled={isLoading}
-                  />
-                </div>
-                {errorMessage && (
-                  <div className="text-red-300 text-sm mt-2">
-                    {errorMessage}
-                  </div>
-                )}
+            ) : (
+              // Tela de Login Local
+              <div className="space-y-6">
+                {/* Botão Voltar */}
                 <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 flex items-center justify-center gap-2"
+                  onClick={handleBackToMain}
+                  className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-sm"
                 >
-                  {isLoading ? 'Entrando...' : 'Login Local'}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Voltar
                 </button>
-              </form>
-            </div>
 
-            <div className="mt-8 text-center">
-              <p className="text-white/80 text-sm mb-4">
-                Clique abaixo para fazer login com sua conta Sebrae
-              </p>
+                <div className="text-center mb-6">
+                  <h2 className="text-xl font-medium text-white mb-2">Login Local</h2>
+                  <p className="text-white/70 text-sm">Entre com suas credenciais locais</p>
+                </div>
 
-              <button
-                onClick={handleKeycloakLogin}
-                disabled={isLoading}
-                className="w-full bg-blue-500/80 hover:bg-blue-600/80 text-white py-3 px-4 rounded-xl backdrop-blur-sm border border-blue-400/30 transition-all duration-300 font-medium"
-              >
-                {isLoading ? 'Entrando...' : 'Continuar com Sebrae'}
-              </button>
-            </div>
+                {/* Formulário de Login Local */}
+                <form onSubmit={handleLocalLogin} className="space-y-4">
+                  <div>
+                    <input
+                      type="text"
+                      name="username"
+                      placeholder="Usuário"
+                      value={credentials.username}
+                      onChange={e => setCredentials({...credentials, username: e.target.value})}
+                      className="w-full bg-white/10 text-white placeholder-white/50 py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/40"
+                      disabled={isLoading}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="password"
+                      name="password"
+                      placeholder="Senha"
+                      value={credentials.password}
+                      onChange={e => setCredentials({...credentials, password: e.target.value})}
+                      className="w-full bg-white/10 text-white placeholder-white/50 py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/40"
+                      disabled={isLoading}
+                      required
+                    />
+                  </div>
+                  
+                  {errorMessage && (
+                    <div className="bg-red-500/20 border border-red-400/30 text-red-200 px-4 py-3 rounded-lg text-sm">
+                      {errorMessage}
+                    </div>
+                  )}
+                  
+                  <button
+                    type="submit"
+                    disabled={isLoading || !credentials.username || !credentials.password}
+                    className="w-full bg-white/20 hover:bg-white/30 disabled:bg-white/10 disabled:opacity-50 text-white py-3 px-4 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 flex items-center justify-center gap-2 font-medium"
+                  >
+                    {isLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/20 border-t-white"></div>
+                        Entrando...
+                      </>
+                    ) : (
+                      'Entrar'
+                    )}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       </main>
