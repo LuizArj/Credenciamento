@@ -155,16 +155,18 @@ const ConfigurationScreen = ({ onSessionStart }) => {
         <div className="min-h-screen bg-gradient-to-br from-[#1E67C3] to-[#0A4DA6] flex flex-col">
             {/* Header com Logo */}
             <header className="w-full p-4 flex justify-between items-center">
-                <img src="/sebrae-logo-white.png" alt="Sebrae" className="h-10 transition-transform hover:scale-105" />
-                <button
+                <button 
                     onClick={handleBackToMenu}
-                    className="text-white/80 hover:text-white flex items-center gap-2 transition-colors"
+                    className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-transparent rounded"
+                    title="Voltar ao início"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-                    </svg>
-                    Voltar ao Menu
+                    <img src="/sebrae-logo-white.png" alt="Sebrae - Voltar ao início" className="h-10 transition-transform hover:scale-105" />
                 </button>
+                <div className="text-center">
+                    <span className="text-white text-sm font-medium hidden sm:block">
+                        Usuário: {session?.user?.name || session?.user?.username || 'admin'}
+                    </span>
+                </div>
             </header>
 
             {/* Conteúdo Principal */}

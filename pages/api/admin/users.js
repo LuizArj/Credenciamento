@@ -49,6 +49,7 @@ async function getUsers(req, res) {
       .select(`
         id,
         username,
+        password,
         created_at,
         roles:credenciamento_admin_user_roles(
           role:credenciamento_admin_roles(
@@ -71,6 +72,7 @@ async function getUsers(req, res) {
       username: user.username,
       email: user.username, // Assumindo que o username é o email
       created_at: user.created_at,
+      user_type: user.password === 'KEYCLOAK_USER' ? 'keycloak' : 'local',
       roles: user.roles.map(r => r.role)
     }));
 

@@ -553,15 +553,12 @@ const QRCodeLabel = ({ participantData, onNewSearch }) => {
 const Header = () => (
     <header className="w-full bg-sebrae-blue-dark p-4 shadow-lg flex justify-between items-center fixed top-0 left-0 z-10">
         <div className="w-1/3 flex items-center space-x-4">
-            <img src="/sebrae-logo-white.png" alt="Logo Sebrae" className="h-8" />
             <button 
                 onClick={() => window.location.href = '/'}
-                className="text-white text-sm font-semibold hover:text-white/80 flex items-center gap-2 transition-colors"
+                className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sebrae-blue-dark rounded"
+                title="Voltar ao início"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-                </svg>
-                Voltar ao Menu
+                <img src="/sebrae-logo-white.png" alt="Logo Sebrae - Voltar ao início" className="h-8" />
             </button>
         </div>
         <div className="w-1/3 text-center">
