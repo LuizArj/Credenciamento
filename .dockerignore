@@ -1,0 +1,83 @@
+# Dependênciasnode_modules
+
+node_modulesnpm-debug.log*
+
+npm-debug.log*.env.local
+
+.npm.env.development.local
+
+.env.test.local
+
+# Arquivos de ambiente e configuração local.env.production.local
+
+.env.local.next/
+
+.env.development.localout/
+
+.env.test.local.DS_Store
+
+.env.production.local*.tsbuildinfo
+
+.git
+
+# Build e cache.gitignore
+
+.next/README.md
+
+out/*.md
+
+*.tsbuildinfo.vscode/
+
+.idea/
+
+# Arquivos de sistema*.swp
+
+.DS_Store*.swo
+
+Thumbs.dblogs
+
+*.swp*.log
+
+*.swoThumbs.db
+
+Dockerfile
+
+# Git.dockerignore
+
+.gitdocker-compose*.yml
+
+.gitignore.github/
+
+sql/test_data.sql
+
+# Documentação (removida na limpeza)*.bak
+
+*.md*.backup
+
+docs/.tmp/
+
+temp/
+# Arquivos de desenvolvimento
+.vscode/
+.idea/
+*.backup
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos temporários
+.tmp/
+temp/
+
+# Arquivos SQL de teste
+sql/test_data.sql
+sql/*.backup
+
+# Arquivos Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore

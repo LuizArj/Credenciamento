@@ -1,10 +1,19 @@
 // utils/validators.js
-import { sanitize } from 'isomorphic-dompurify';
 
 // Sanitiza strings para prevenir XSS
 export function sanitizeInput(input) {
     if (typeof input !== 'string') return input;
-    return sanitize(input.trim());
+    // Sanitização básica removendo caracteres HTML perigosos
+    return input.trim()
+        .replace(/[<>\"'&]/g, function(match) {
+            return {
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#x27;',
+                '&': '&amp;'
+            }[match];
+        });
 }
 
 // Valida e-mail
