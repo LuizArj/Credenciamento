@@ -1,12 +1,22 @@
 {
   "root": true,
   "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "project": "./tsconfig.json"
+  },
   "plugins": ["@typescript-eslint", "react", "react-hooks", "prettier"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended",
+    "plugin:react/jsx-runtime",
     "prettier"
   ],
   "env": {
@@ -21,11 +31,63 @@
     }
   },
   "rules": {
+    // React
     "react/react-in-jsx-scope": "off",
     "react/prop-types": "off",
+    "react/jsx-no-target-blank": "error",
+    "react/no-danger": "warn",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+
+    // TypeScript
     "@typescript-eslint/explicit-module-boundary-types": "off",
-    "@typescript-eslint/no-explicit-any": "warn",
-    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+
+    // Code Quality
+    "no-console": [
+      "error",
+      {
+        "allow": ["warn", "error", "info"]
+      }
+    ],
+    "no-debugger": "error",
+    "no-alert": "warn",
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-arrow-callback": "error",
+    "prefer-template": "error",
+    "no-nested-ternary": "warn",
+    "no-unneeded-ternary": "error",
+    "eqeqeq": ["error", "always"],
+    "curly": ["error", "all"],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-return-await": "error",
+    "require-await": "error",
+
+    // Prettier
     "prettier/prettier": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["*.js"],
+      "rules": {
+        "@typescript-eslint/no-var-requires": "off",
+        "@typescript-eslint/no-floating-promises": "off",
+        "@typescript-eslint/no-misused-promises": "off"
+      }
+    }
+  ]
 }

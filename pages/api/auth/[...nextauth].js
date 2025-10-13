@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import KeycloakProvider from 'next-auth/providers/keycloak';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { authenticateLocalUser } from '../../../utils/user-management';
+import { authenticateLocalUser } from '../../../utils/user-management.ts';
 import https from 'https';
 
 // Desabilitar verificação SSL em desenvolvimento
