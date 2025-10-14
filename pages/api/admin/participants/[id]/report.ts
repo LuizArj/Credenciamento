@@ -1,6 +1,6 @@
 /**
  * API Route: Participant Report
- * 
+ *
  * @route GET /api/admin/participants/[id]/report
  * @description Gera relatório detalhado de um participante
  * @auth Requer autenticação admin
@@ -24,11 +24,9 @@ interface ParticipantReportSuccess {
     event?: any;
     history?: any[];
     stats?: {
-      total_eventos: number;
-      credenciados: number;
-      pendentes: number;
-      checked_in: number;
-      taxa_presenca: number;
+      total_events: number;
+      total_check_ins: number;
+      last_activity: string | null;
     };
   };
   message: string;
@@ -47,10 +45,7 @@ type ApiResponse = ParticipantReportSuccess | ApiError;
 // MAIN HANDLER
 // ============================================================================
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiResponse>
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse<ApiResponse>) {
   // --------------------------------------------------------------------------
   // 1. METHOD VALIDATION
   // --------------------------------------------------------------------------
@@ -77,8 +72,12 @@ export default async function handler(
     }
 
     // Verificar permissões
-    const userRoles = (session.user as any).roles || [];
-    if (!userRoles.includes('admin') && !userRoles.includes('manager') && !userRoles.includes('operator')) {
+    const userRoles = session.user.roles || [];
+    if (
+      !userRoles.includes('admin') &&
+      !userRoles.includes('manager') &&
+      !userRoles.includes('operator')
+    ) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
@@ -145,33 +144,60 @@ export default async function handler(
       });
     }
 
-    // Buscar dados do evento (se solicitado)
-    let event = null;
-    if (includeEvents && participant.event_id) {
-      event = await supabaseAdminService.getEventById(participant.event_id);
+    // Buscar histórico de participação (sempre buscamos para derivar evento/estatísticas atuais)
+    const fullHistory = await supabaseAdminService.getParticipantHistory(participant.cpf);
+
+    // Buscar dados do evento (se solicitado). Como não usamos mais participants.event_id,
+    // derivamos o "evento atual" a partir do histórico mais recente.
+    let event = null as any;
+    if (includeEvents) {
+      const latest = fullHistory[0]; // getParticipantHistory já ordena por data_inscricao desc
+      if (latest?.event_id) {
+        event = await supabaseAdminService.getEventById(latest.event_id);
+      }
     }
 
-    // Buscar histórico de participação
-    let history = null;
-    let stats = null;
-    if (includeHistory) {
-      history = await supabaseAdminService.getParticipantHistory(participant.cpf);
+    // Preparar histórico conforme flag
+    const history = includeHistory
+      ? fullHistory.map((h: any) => ({
+          id: `${participant.id}-${h.event_id}`,
+          action: h.checked_in
+            ? 'checkin'
+            : h.status_credenciamento === 'credentialed'
+              ? 'credenciar'
+              : 'atualizar',
+          status_before: null,
+          status_after: h.status_credenciamento,
+          user_id: null,
+          user_name: undefined,
+          created_at: h.checked_in_at || h.credenciado_em || h.event_data_inicio,
+          metadata: {
+            event_id: h.event_id,
+            event_nome: h.event_nome,
+          },
+        }))
+      : undefined;
 
-      // Calcular estatísticas do histórico
-      const total_eventos = history.length;
-      const credenciados = history.filter(h => h.status_credenciamento === 'credentialed').length;
-      const pendentes = history.filter(h => h.status_credenciamento === 'pending').length;
-      const checked_in = history.filter(h => h.checked_in).length;
-      const taxa_presenca = credenciados > 0 ? (checked_in / credenciados) * 100 : 0;
+    // Calcular estatísticas alinhadas com o que o UI espera
+    // UI espera: stats.total_events, stats.total_check_ins, stats.last_activity
+    const total_events = fullHistory.length;
+    const total_check_ins = fullHistory.filter((h) => h.checked_in).length;
+    const last_activity = fullHistory[0]?.credenciado_em || null;
 
-      stats = {
-        total_eventos,
-        credenciados,
-        pendentes,
-        checked_in,
-        taxa_presenca,
-      };
-    }
+    const stats = {
+      total_events,
+      total_check_ins,
+      last_activity,
+    };
+
+    // Ajustar participant com status e check-in agregados
+    const enrichedParticipant = {
+      ...participant,
+      status_credenciamento: fullHistory.some((h) => h.status_credenciamento === 'credentialed')
+        ? 'credenciado'
+        : 'nao_credenciado',
+      checked_in_at: fullHistory.find((h) => h.checked_in_at)?.checked_in_at || null,
+    };
 
     console.log(`[ParticipantReport] ✅ Relatório gerado com sucesso`);
 
@@ -181,14 +207,13 @@ export default async function handler(
     return res.status(200).json({
       success: true,
       data: {
-        participant,
+        participant: enrichedParticipant,
         event: includeEvents ? event : undefined,
-        history: includeHistory ? history || [] : undefined,
-        stats: stats || undefined,
+        history: history || undefined,
+        stats,
       },
       message: 'Relatório gerado com sucesso.',
     });
-
   } catch (error: any) {
     // --------------------------------------------------------------------------
     // 6. ERROR HANDLING

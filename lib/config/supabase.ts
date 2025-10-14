@@ -1,6 +1,6 @@
 /**
  * Cliente Supabase centralizado e tipado
- * 
+ *
  * @module lib/config/supabase
  * @description Exporta instâncias configuradas do Supabase para uso em diferentes contextos
  */
@@ -33,9 +33,21 @@ let supabaseAdminInstance: SupabaseClient<Database> | null = null;
 
 export function getSupabaseAdmin(): SupabaseClient<Database> {
   if (!supabaseConfig.serviceRoleKey) {
+    console.error('[Supabase Admin] Configuração inválida:');
+    console.error(
+      '  - SUPABASE_SERVICE_ROLE_KEY:',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING'
+    );
+    console.error(
+      '  - SUPABASE_SERVICE_KEY:',
+      process.env.SUPABASE_SERVICE_KEY ? 'SET' : 'MISSING'
+    );
+    console.error('  - supabaseConfig.serviceRoleKey:', supabaseConfig.serviceRoleKey);
+
     throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY não está configurada. ' +
-        'Esta chave é necessária para operações administrativas.'
+      'SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_SERVICE_KEY não está configurada. ' +
+        'Esta chave é necessária para operações administrativas. ' +
+        'Verifique se o arquivo .env.local existe e contém uma dessas variáveis.'
     );
   }
 

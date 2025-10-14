@@ -36,18 +36,29 @@ export const RecentActivity: FC<RecentActivityProps> = ({
   className = '',
 }) => {
   const formatTimeAgo = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    try {
+      const date = new Date(timestamp);
 
-    if (seconds < 60) return 'agora mesmo';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}min atrás`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h atrás`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}d atrás`;
-    return date.toLocaleDateString('pt-BR');
+      // Verificar se a data é válida
+      if (isNaN(date.getTime())) {
+        return 'Data inválida';
+      }
+
+      const now = new Date();
+      const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+      if (seconds < 60) return 'agora mesmo';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}min atrás`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h atrás`;
+      const days = Math.floor(hours / 24);
+      if (days < 30) return `${days}d atrás`;
+      return date.toLocaleDateString('pt-BR');
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, timestamp);
+      return 'Data inválida';
+    }
   };
 
   if (isLoading) {
@@ -71,20 +82,16 @@ export const RecentActivity: FC<RecentActivityProps> = ({
 
   return (
     <div className={`bg-white rounded-xl shadow-sm p-6 ${className}`}>
-      <h2 className="text-lg font-semibold text-gray-800 mb-6">
-        Atividade Recente
-      </h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-6">Atividade Recente</h2>
 
       <div className="space-y-6">
         {activities.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">
-            Nenhuma atividade recente
-          </p>
+          <p className="text-gray-500 text-center py-4">Nenhuma atividade recente</p>
         ) : (
           activities.map((activity) => (
             <div key={activity.id} className="flex items-start space-x-4">
               <ActivityIcon type={activity.type} />
-              
+
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-900">{activity.description}</p>
                 <div className="mt-1 flex items-center text-xs text-gray-500">

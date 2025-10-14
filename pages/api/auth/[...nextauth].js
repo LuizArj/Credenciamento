@@ -18,10 +18,10 @@ export const authOptions = {
       wellKnown: undefined, // Desabilita descoberta automática
       authorization: {
         url: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/auth`,
-        params: { 
+        params: {
           scope: 'openid email profile',
-          response_type: 'code'
-        } 
+          response_type: 'code',
+        },
       },
       token: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/token`,
       userinfo: `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/userinfo`,
@@ -31,21 +31,21 @@ export const authOptions = {
           id: profile.sub,
           name: profile.name || profile.preferred_username,
           email: profile.email,
-          roles: profile.roles || profile.groups || []
-        }
+          roles: profile.roles || profile.groups || [],
+        };
       },
       httpOptions: {
         timeout: 10000,
         agent: new https.Agent({
-          rejectUnauthorized: false
-        })
-      }
+          rejectUnauthorized: false,
+        }),
+      },
     }),
     CredentialsProvider({
       name: 'Credenciais Locais',
       credentials: {
-        username: { label: "Username", type: "text" },
-        password: { label: "Senha", type: "password" }
+        username: { label: 'Username', type: 'text' },
+        password: { label: 'Senha', type: 'password' },
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) {
@@ -53,9 +53,14 @@ export const authOptions = {
         }
 
         const result = await authenticateLocalUser(credentials.username, credentials.password);
-        
+
         if (result.error) {
-          throw new Error(result.error.message || 'Erro na autenticação');
+          // Propagar mensagem real de erro para facilitar diagnóstico
+          throw new Error(
+            typeof result.error === 'string'
+              ? result.error
+              : result.error?.message || 'Erro na autenticação'
+          );
         }
 
         if (!result.data || !result.data.user) {
@@ -63,31 +68,32 @@ export const authOptions = {
         }
 
         const { user } = result.data;
-        
+
         // Garantindo que todos os campos são strings ou booleanos
         return {
           id: String(user.id),
           name: String(user.name),
           email: String(user.email),
           roles: user.roles || [],
-          isLocalUser: true
+          isLocalUser: true,
         };
-      }
+      },
     }),
   ],
   callbacks: {
     async jwt({ token, account, profile, user }) {
       // Log apenas em caso de erro ou primeira autenticação
       if (process.env.NODE_ENV === 'development' && account) {
-        console.log('NextAuth: Nova autenticação para', token.email);
+        const identAuth = token.name || token.email || token.sub || '(sem identificador)';
+        console.log('NextAuth: Nova autenticação para', identAuth);
       }
-      
-      if (account) {
+
+      if (account && account.provider === 'keycloak') {
         // Usuário Keycloak - verificar se precisa registrar
         token.accessToken = account.access_token;
         token.roles = profile?.roles || [];
         token.isLocalUser = false;
-        
+
         // Auto-registro do usuário do Keycloak no sistema de permissões
         try {
           const { createClient } = await import('@supabase/supabase-js');
@@ -113,12 +119,12 @@ export const authOptions = {
                 email: token.email,
                 keycloak_id: token.sub,
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
               })
               .select('id')
               .single();
 
-            if (!insertError && newUser) {              
+            if (!insertError && newUser) {
               // Atribuir role 'operator' por padrão para novos usuários
               const { data: operatorRole } = await supabaseAdmin
                 .from('credenciamento_admin_roles')
@@ -127,14 +133,12 @@ export const authOptions = {
                 .single();
 
               if (operatorRole) {
-                await supabaseAdmin
-                  .from('credenciamento_admin_user_roles')
-                  .insert({
-                    user_id: newUser.id,
-                    role_id: operatorRole.id,
-                    created_at: new Date().toISOString()
-                  });
-                
+                await supabaseAdmin.from('credenciamento_admin_user_roles').insert({
+                  user_id: newUser.id,
+                  role_id: operatorRole.id,
+                  created_at: new Date().toISOString(),
+                });
+
                 token.roles = ['operator'];
                 console.log('NextAuth: Role operator atribuída ao novo usuário');
               }
@@ -143,20 +147,21 @@ export const authOptions = {
             // Atualizar usuário existente com keycloak_id
             await supabaseAdmin
               .from('credenciamento_admin_users')
-              .update({ 
+              .update({
                 keycloak_id: token.sub,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
               })
               .eq('id', existingUser.id);
           }
         } catch (error) {
           console.error('NextAuth: Erro no auto-registro do Keycloak:', error);
         }
-      } else if (user?.isLocalUser) {
+      } else if (user?.isLocalUser || (account && account.provider === 'credentials')) {
         // Usuário Local
         token.isLocalUser = true;
         token.name = user.name;
-        token.email = user.email;
+        // Se não houver email cadastrado, reutiliza o username (name) apenas para fins de identificação nos logs / session
+        token.email = user.email || user.name || null;
         token.roles = user.roles || [];
       } else if (!token.roles || token.roles.length === 0) {
         // Se não temos roles, vamos buscar do banco
@@ -168,45 +173,49 @@ export const authOptions = {
           );
 
           let userData = null;
-          
+
           // Buscar por keycloak_id primeiro, depois por username/email
           if (token.sub) {
             const { data: kcUser } = await supabaseAdmin
               .from('credenciamento_admin_users')
-              .select(`
+              .select(
+                `
                 *,
                 roles:credenciamento_admin_user_roles(
                   role:credenciamento_admin_roles(
                     name
                   )
                 )
-              `)
+              `
+              )
               .eq('keycloak_id', token.sub)
               .single();
-            
+
             userData = kcUser;
           }
-          
+
           // Se não encontrou por keycloak_id, buscar por email/username
           if (!userData && token.email) {
             const { data: emailUser } = await supabaseAdmin
               .from('credenciamento_admin_users')
-              .select(`
+              .select(
+                `
                 *,
                 roles:credenciamento_admin_user_roles(
                   role:credenciamento_admin_roles(
                     name
                   )
                 )
-              `)
+              `
+              )
               .eq('username', token.email)
               .single();
-            
+
             userData = emailUser;
           }
 
           if (userData) {
-            const roles = userData.roles?.map(r => r.role.name) || [];
+            const roles = userData.roles?.map((r) => r.role.name) || [];
             token.roles = roles;
           } else {
             token.roles = [];
@@ -216,26 +225,28 @@ export const authOptions = {
           token.roles = [];
         }
       }
-      
+
       return token;
     },
     async session({ session, token }) {
       // Apenas log em desenvolvimento e para novos logins
       if (process.env.NODE_ENV === 'development' && !session.logged) {
-        console.log('NextAuth: Sessão criada para', token.email);
+        const identSess = token.name || token.email || token.sub || '(sem identificador)';
+        console.log('NextAuth: Sessão criada para', identSess);
         session.logged = true;
       }
-      
+
       // Garantindo que todos os campos são serializáveis
+      const finalName = token.name || token.email || token.sub || null;
       return {
         ...session,
         user: {
-          name: token.name || null,
+          name: finalName,
           email: token.email || null,
-          roles: token.roles || []
+          roles: token.roles || [],
         },
         isLocalUser: !!token.isLocalUser,
-        expires: session.expires
+        expires: session.expires,
       };
     },
   },
@@ -253,7 +264,7 @@ export const authOptions = {
     },
     debug(code, metadata) {
       // Suprimir debug logs
-    }
+    },
   },
 };
 

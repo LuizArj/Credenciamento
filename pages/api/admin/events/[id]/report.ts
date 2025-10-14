@@ -1,6 +1,6 @@
 /**
  * API Route: Event Report
- * 
+ *
  * @route GET /api/admin/events/[id]/report
  * @description Gera relatório detalhado de um evento
  * @auth Requer autenticação admin
@@ -11,7 +11,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../auth/[...nextauth]';
 import { eventReportQuerySchema } from '@/schemas';
-import { supabaseAdminService } from '@/services';
+import { supabaseAdminService, sasService } from '@/services';
+import { normalizeCPF } from '@/lib/utils/cpf';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -49,10 +50,7 @@ type ApiResponse = EventReportSuccess | ApiError;
 // MAIN HANDLER
 // ============================================================================
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiResponse>
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse<ApiResponse>) {
   // --------------------------------------------------------------------------
   // 1. METHOD VALIDATION
   // --------------------------------------------------------------------------
@@ -79,7 +77,7 @@ export default async function handler(
     }
 
     // Verificar permissões
-    const userRoles = (session.user as any).roles || [];
+    const userRoles = session.user.roles || [];
     if (!userRoles.includes('admin') && !userRoles.includes('manager')) {
       return res.status(403).json({
         success: false,
@@ -163,22 +161,73 @@ export default async function handler(
         orderBy: 'nome',
         order: 'asc',
       });
-      participants = result.data;
+      // Deduplicar por CPF normalizado e propagar fonte
+      const byCpf = new Map<string, any>();
+      for (const p of result.data) {
+        const key = normalizeCPF(p.cpf);
+        if (!byCpf.has(key)) {
+          byCpf.set(key, { ...p, cpf: key });
+        }
+      }
+      let baseParticipants = Array.from(byCpf.values());
+
+      // Enriquecer com presença no SAS e status UI
+      if (event.codevento_sas) {
+        try {
+          const codEvento = String(event.codevento_sas);
+          const sasParticipants = await sasService.fetchParticipants({ codEvento });
+          const sasCpfSet = new Set<string>(
+            (sasParticipants || []).map((sp: any) => normalizeCPF(sp.cpf))
+          );
+
+          baseParticipants = baseParticipants.map((p: any) => {
+            const in_sas = sasCpfSet.has(normalizeCPF(p.cpf));
+            // status_credenciamento vem como 'credentialed'|'pending'|'cancelled' (mapeado no service)
+            const isCredenciado =
+              p.status_credenciamento === 'credentialed' ||
+              p.status_credenciamento === 'credenciado';
+            let ui_status = p.status_credenciamento;
+            if (isCredenciado && in_sas) {
+              ui_status = 'integrado';
+            } else if (isCredenciado && !in_sas) {
+              ui_status = 'credenciado/Pendente de sincronização';
+            } else if (!isCredenciado && in_sas) {
+              ui_status = 'Pendente de Checkin';
+            } else {
+              // manter tradução padrão do front caso não se aplique
+              ui_status = p.status_credenciamento;
+            }
+            return { ...p, in_sas, ui_status };
+          });
+        } catch (e) {
+          console.warn(
+            '[EventReport] Não foi possível consultar participantes no SAS:',
+            (e as any)?.message
+          );
+          baseParticipants = baseParticipants.map((p: any) => ({ ...p, in_sas: false }));
+        }
+      }
+
+      participants = baseParticipants;
     }
 
     // Preparar dados de gráficos
-    const charts = stats ? {
-      statusDistribution: [
-        { name: 'Credenciados', value: stats.credenciados, color: '#10b981' },
-        { name: 'Pendentes', value: stats.pendentes, color: '#f59e0b' },
-        { name: 'Cancelados', value: stats.cancelados, color: '#ef4444' },
-      ],
-      presenceRate: {
-        present: stats.checked_in,
-        absent: stats.credenciados - stats.checked_in,
-        rate: stats.taxa_presenca,
-      },
-    } : null;
+    const charts = stats
+      ? {
+          statusDistribution: [
+            { name: 'Credenciados', value: stats.credenciados, color: '#10b981' },
+            { name: 'Pendentes', value: stats.pendentes, color: '#f59e0b' },
+            { name: 'Cancelados', value: stats.cancelados, color: '#ef4444' },
+          ],
+          presenceRate: {
+            present: stats.checked_in,
+            absent: stats.credenciados - stats.checked_in,
+            rate: stats.taxa_presenca,
+          },
+          dailyCheckIns: [], // Adicionar dados de check-ins diários se necessário
+          categoryBreakdown: [], // Adicionar breakdown por categoria se necessário
+        }
+      : null;
 
     console.log(`[EventReport] ✅ Relatório gerado com sucesso`);
 
@@ -203,7 +252,6 @@ export default async function handler(
       },
       message: 'Relatório gerado com sucesso.',
     });
-
   } catch (error: any) {
     // --------------------------------------------------------------------------
     // 6. ERROR HANDLING

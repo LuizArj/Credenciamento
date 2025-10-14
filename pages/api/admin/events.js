@@ -26,12 +26,9 @@ async function handler(req, res) {
 async function handleGet(req, res) {
   try {
     const { status, search, page = 1, limit = 10 } = req.query;
-    
+
     // Primeiro, buscar apenas os eventos
-    let query = supabaseAdmin
-      .from('events')
-      .select('*')
-      .order('data_inicio', { ascending: false });
+    let query = supabaseAdmin.from('events').select('*').order('data_inicio', { ascending: false });
 
     // Filtros
     if (status && status !== 'all') {
@@ -60,20 +57,46 @@ async function handleGet(req, res) {
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: 0
-        }
+          total: 0,
+        },
       });
     }
 
-    // Processar dados e adicionar estatísticas básicas (zeradas por enquanto)
-    const eventsWithStats = events.map(event => {
+    // Buscar estatísticas de registrations para cada evento
+    const eventIds = events.map((e) => e.id);
+    const { data: registrationStats } = await supabaseAdmin
+      .from('registrations')
+      .select('event_id, status')
+      .in('event_id', eventIds);
+
+    // Agrupar estatísticas por evento
+    const statsByEvent = {};
+    registrationStats?.forEach((reg) => {
+      if (!statsByEvent[reg.event_id]) {
+        statsByEvent[reg.event_id] = {
+          total: 0,
+          checkedIn: 0,
+          cancelled: 0,
+        };
+      }
+      statsByEvent[reg.event_id].total++;
+      if (reg.status === 'checked_in') statsByEvent[reg.event_id].checkedIn++;
+      if (reg.status === 'cancelled') statsByEvent[reg.event_id].cancelled++;
+    });
+
+    // Processar dados e adicionar estatísticas reais
+    const eventsWithStats = events.map((event) => {
+      const stats = statsByEvent[event.id] || { total: 0, checkedIn: 0, cancelled: 0 };
+      const attendanceRate =
+        stats.total > 0 ? ((stats.checkedIn / stats.total) * 100).toFixed(1) : '0';
+
       return {
         ...event,
-        totalRegistrations: 0, // Por enquanto zerado até configurar as relações
-        checkedInCount: 0,
-        cancelledCount: 0,
-        attendanceRate: '0',
-        ticketCategories: []
+        totalRegistrations: stats.total,
+        checkedInCount: stats.checkedIn,
+        cancelledCount: stats.cancelled,
+        attendanceRate,
+        ticketCategories: [],
       };
     });
 
@@ -82,10 +105,9 @@ async function handleGet(req, res) {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: count || 0
-      }
+        total: count || 0,
+      },
     });
-
   } catch (error) {
     console.error('Erro inesperado ao buscar eventos:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -115,54 +137,56 @@ async function handlePost(req, res) {
       metaParticipantes,
       configuracoes = {},
       ticketCategories = [],
-      codevento_sas
+      codevento_sas,
     } = req.body;
 
     // Validações
     if (!nome || !dataInicio || !local) {
-      return res.status(400).json({ 
-        error: 'Campos obrigatórios: nome, dataInicio, local' 
+      return res.status(400).json({
+        error: 'Campos obrigatórios: nome, dataInicio, local',
       });
     }
 
     // Verificar se a data de início não é no passado
     if (new Date(dataInicio) < new Date()) {
-      return res.status(400).json({ 
-        error: 'A data de início não pode ser no passado' 
+      return res.status(400).json({
+        error: 'A data de início não pode ser no passado',
       });
     }
 
     // Verificar se dataFim é posterior a dataInicio
     if (dataFim && new Date(dataFim) <= new Date(dataInicio)) {
-      return res.status(400).json({ 
-        error: 'A data de fim deve ser posterior à data de início' 
+      return res.status(400).json({
+        error: 'A data de fim deve ser posterior à data de início',
       });
     }
 
     // Criar o evento
     const { data: event, error: eventError } = await supabaseAdmin
       .from('events')
-      .insert([{
-        nome,
-        descricao,
-        data_inicio: dataInicio,
-        data_fim: dataFim,
-        local,
-        endereco,
-        capacidade: parseInt(capacidade) || 0,
-        modalidade,
-        tipo_evento: tipoEvento,
-        publico_alvo: publicoAlvo,
-        gerente,
-        coordenador,
-        solucao,
-        unidade,
-        tipo_acao: tipoAcao,
-        status,
-        meta_participantes: parseInt(metaParticipantes) || 0,
-        configuracoes,
-        codevento_sas
-      }])
+      .insert([
+        {
+          nome,
+          descricao,
+          data_inicio: dataInicio,
+          data_fim: dataFim,
+          local,
+          endereco,
+          capacidade: parseInt(capacidade) || 0,
+          modalidade,
+          tipo_evento: tipoEvento,
+          publico_alvo: publicoAlvo,
+          gerente,
+          coordenador,
+          solucao,
+          unidade,
+          tipo_acao: tipoAcao,
+          status,
+          meta_participantes: parseInt(metaParticipantes) || 0,
+          configuracoes,
+          codevento_sas,
+        },
+      ])
       .select()
       .single();
 
@@ -173,14 +197,14 @@ async function handlePost(req, res) {
 
     // Criar categorias de tickets se fornecidas
     if (ticketCategories.length > 0) {
-      const categories = ticketCategories.map(cat => ({
+      const categories = ticketCategories.map((cat) => ({
         event_id: event.id,
         nome: cat.nome,
         descricao: cat.descricao,
         preco: parseFloat(cat.preco) || 0,
         quantidade_disponivel: parseInt(cat.quantidadeDisponivel) || 0,
         data_inicio_venda: cat.dataInicioVenda,
-        data_fim_venda: cat.dataFimVenda
+        data_fim_venda: cat.dataFimVenda,
       }));
 
       const { error: categoriesError } = await supabaseAdmin
@@ -194,7 +218,6 @@ async function handlePost(req, res) {
     }
 
     return res.status(201).json(event);
-
   } catch (error) {
     console.error('Erro inesperado ao criar evento:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -229,7 +252,8 @@ async function handlePut(req, res) {
     if (eventData.dataFim !== undefined) updateData.data_fim = eventData.dataFim;
     if (eventData.local) updateData.local = eventData.local;
     if (eventData.endereco !== undefined) updateData.endereco = eventData.endereco;
-    if (eventData.capacidade !== undefined) updateData.capacidade = parseInt(eventData.capacidade) || 0;
+    if (eventData.capacidade !== undefined)
+      updateData.capacidade = parseInt(eventData.capacidade) || 0;
     if (eventData.modalidade) updateData.modalidade = eventData.modalidade;
     if (eventData.tipoEvento) updateData.tipo_evento = eventData.tipoEvento;
     if (eventData.publicoAlvo !== undefined) updateData.publico_alvo = eventData.publicoAlvo;
@@ -239,7 +263,8 @@ async function handlePut(req, res) {
     if (eventData.unidade !== undefined) updateData.unidade = eventData.unidade;
     if (eventData.tipoAcao !== undefined) updateData.tipo_acao = eventData.tipoAcao;
     if (eventData.status) updateData.status = eventData.status;
-    if (eventData.metaParticipantes !== undefined) updateData.meta_participantes = parseInt(eventData.metaParticipantes) || 0;
+    if (eventData.metaParticipantes !== undefined)
+      updateData.meta_participantes = parseInt(eventData.metaParticipantes) || 0;
     if (eventData.configuracoes !== undefined) updateData.configuracoes = eventData.configuracoes;
     if (eventData.codevento_sas !== undefined) updateData.codevento_sas = eventData.codevento_sas;
 
@@ -259,21 +284,18 @@ async function handlePut(req, res) {
     // Atualizar categorias de tickets se fornecidas
     if (ticketCategories && Array.isArray(ticketCategories)) {
       // Remover categorias existentes
-      await supabaseAdmin
-        .from('ticket_categories')
-        .delete()
-        .eq('event_id', id);
+      await supabaseAdmin.from('ticket_categories').delete().eq('event_id', id);
 
       // Inserir novas categorias
       if (ticketCategories.length > 0) {
-        const categories = ticketCategories.map(cat => ({
+        const categories = ticketCategories.map((cat) => ({
           event_id: id,
           nome: cat.nome,
           descricao: cat.descricao,
           preco: parseFloat(cat.preco) || 0,
           quantidade_disponivel: parseInt(cat.quantidadeDisponivel) || 0,
           data_inicio_venda: cat.dataInicioVenda,
-          data_fim_venda: cat.dataFimVenda
+          data_fim_venda: cat.dataFimVenda,
         }));
 
         const { error: categoriesError } = await supabaseAdmin
@@ -287,7 +309,6 @@ async function handlePut(req, res) {
     }
 
     return res.status(200).json(updatedEvent);
-
   } catch (error) {
     console.error('Erro inesperado ao atualizar evento:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -316,16 +337,14 @@ async function handleDelete(req, res) {
     }
 
     if (registrations && registrations.length > 0) {
-      return res.status(400).json({ 
-        error: 'Não é possível excluir evento com participantes registrados. Cancele o evento em vez de excluí-lo.' 
+      return res.status(400).json({
+        error:
+          'Não é possível excluir evento com participantes registrados. Cancele o evento em vez de excluí-lo.',
       });
     }
 
     // Excluir o evento (categorias de tickets serão excluídas automaticamente pelo CASCADE)
-    const { error: deleteError } = await supabaseAdmin
-      .from('events')
-      .delete()
-      .eq('id', id);
+    const { error: deleteError } = await supabaseAdmin.from('events').delete().eq('id', id);
 
     if (deleteError) {
       console.error('Erro ao excluir evento:', deleteError);
@@ -333,7 +352,6 @@ async function handleDelete(req, res) {
     }
 
     return res.status(200).json({ message: 'Evento excluído com sucesso' });
-
   } catch (error) {
     console.error('Erro inesperado ao excluir evento:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -345,5 +363,5 @@ export default withApiAuth(handler, {
   GET: ['events.view'],
   POST: ['events.manage'],
   PUT: ['events.manage'],
-  DELETE: ['events.manage']
+  DELETE: ['events.manage'],
 });

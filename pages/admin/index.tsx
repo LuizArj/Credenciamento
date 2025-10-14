@@ -8,7 +8,7 @@ import { RecentActivity } from '@/components/admin/dashboard/RecentActivity';
 
 const DashboardPage = () => {
   const { data: session, status } = useSession();
-  
+
   const { data: metrics, isLoading: metricsLoading } = useQuery({
     queryKey: ['admin-metrics'],
     queryFn: async () => {
@@ -30,7 +30,7 @@ const DashboardPage = () => {
     enabled: !!session,
   });
 
-  if (status === "loading") {
+  if (status === 'loading') {
     return <div>Loading...</div>;
   }
 
@@ -39,29 +39,30 @@ const DashboardPage = () => {
       <Head>
         <title>Painel Administrativo | Credenciamento Sebrae</title>
       </Head>
-      
+
       <div className="p-6">
         <header className="mb-8">
           <h1 className="text-2xl font-bold text-gray-800">Painel de Controle</h1>
-          <p className="text-gray-600">
-            Bem-vindo, {session?.user?.name}
-          </p>
+          <p className="text-gray-600">Bem-vindo, {session?.user?.name}</p>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <DashboardMetrics
-            metrics={metrics}
-            isLoading={metricsLoading}
-          />
+          <DashboardMetrics metrics={metrics} isLoading={metricsLoading} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <EventsList
-            events={recentEvents}
-            isLoading={eventsLoading}
+          <EventsList events={recentEvents} isLoading={eventsLoading} className="lg:col-span-1" />
+          <RecentActivity
+            activities={metrics?.recentCredentials?.map((credential: any) => ({
+              id: credential.id,
+              type: 'checkin' as const,
+              description: `${credential.name} fez check-in em ${credential.event}`,
+              user: credential.name,
+              timestamp: credential.time,
+            }))}
+            isLoading={metricsLoading}
             className="lg:col-span-1"
           />
-          <RecentActivity className="lg:col-span-1" />
         </div>
       </div>
     </AdminLayout>

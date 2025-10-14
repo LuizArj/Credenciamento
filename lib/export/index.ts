@@ -1,9 +1,9 @@
 /**
  * Export Module
- * 
+ *
  * Central export point for all export-related functionality.
  * Provides unified interface for exporting data to Excel, PDF, and CSV formats.
- * 
+ *
  * @module lib/export
  */
 
@@ -12,8 +12,19 @@ export * from './anonymize';
 export * from './excel';
 export * from './pdf';
 
-import { exportToExcel, ExcelExportOptions, generateExcelFilename, getExcelMimeType } from './excel';
-import { exportToPDF, exportToPDFWithSummary, PDFExportOptions, generatePDFFilename, getPDFMimeType } from './pdf';
+import {
+  exportToExcel,
+  ExcelExportOptions,
+  generateExcelFilename,
+  getExcelMimeType,
+} from './excel';
+import {
+  exportToPDF,
+  exportToPDFWithSummary,
+  PDFExportOptions,
+  generatePDFFilename,
+  getPDFMimeType,
+} from './pdf';
 import { anonymizeRecords, AnonymizableData } from './anonymize';
 
 /**
@@ -32,7 +43,7 @@ export interface ExportConfig {
 
 /**
  * Unified export function
- * 
+ *
  * @example
  * ```typescript
  * const buffer = await exportData({
@@ -63,7 +74,11 @@ export async function exportData(config: ExportConfig): Promise<Buffer> {
 /**
  * Generate appropriate filename based on format
  */
-export function generateFilename(baseName: string, format: 'excel' | 'pdf', includeTimestamp: boolean = true): string {
+export function generateFilename(
+  baseName: string,
+  format: 'excel' | 'pdf',
+  includeTimestamp: boolean = true
+): string {
   if (format === 'excel') {
     return generateExcelFilename(baseName, includeTimestamp);
   }
@@ -150,6 +165,7 @@ export async function exportParticipants(
         { key: 'telefone', label: 'Telefone' },
         { key: 'empresa', label: 'Empresa' },
         { key: 'status_credenciamento', label: 'Status' },
+        { key: 'check_in_at', label: 'Data/Hora Check-in' },
       ],
     },
   });

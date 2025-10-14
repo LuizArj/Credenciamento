@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { normalizeCPF } from '@/lib/utils/cpf';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -14,15 +15,15 @@ export default async function handler(req, res) {
     const { participant, eventDetails, attendantName, localEventId } = req.body;
 
     if (!participant || !eventDetails) {
-      return res.status(400).json({ 
-        message: 'Dados do participante e evento são obrigatórios'
+      return res.status(400).json({
+        message: 'Dados do participante e evento são obrigatórios',
       });
     }
 
     console.log('Registrando credenciamento no banco local:', {
       participantCpf: participant.cpf,
       eventSasId: eventDetails.id,
-      localEventId
+      localEventId,
     });
 
     // 1. Buscar o evento local pelo CODEVENTO_SAS
@@ -47,20 +48,20 @@ export default async function handler(req, res) {
 
     if (!localEvent) {
       console.error('Evento local não encontrado para SAS ID:', eventDetails.id);
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: 'Evento não foi sincronizado no banco local',
-        sasEventId: eventDetails.id
+        sasEventId: eventDetails.id,
       });
     }
 
-    const cpfClean = participant.cpf.replace(/\D/g, '');
+    const cpfClean = normalizeCPF(participant.cpf);
 
     // 2. Verificar/criar participante
     let localParticipant;
     const { data: existingParticipant } = await supabaseAdmin
       .from('participants')
       .select('*')
-      .eq('cpf', participant.cpf)
+      .eq('cpf', cpfClean)
       .single();
 
     if (existingParticipant) {
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
           email: participant.email,
           telefone: participant.phone,
           fonte: participant.source || 'sas',
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', existingParticipant.id)
         .select()
@@ -80,9 +81,9 @@ export default async function handler(req, res) {
 
       if (updateError) {
         console.error('Erro ao atualizar participante:', updateError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           message: 'Erro ao atualizar participante',
-          error: updateError.message 
+          error: updateError.message,
         });
       }
 
@@ -90,13 +91,13 @@ export default async function handler(req, res) {
     } else {
       // Criar novo participante
       const participantData = {
-        cpf: participant.cpf,
+        cpf: cpfClean,
         nome: participant.name,
         email: participant.email,
         telefone: participant.phone,
         fonte: participant.source || 'sas',
         observacoes: `Criado automaticamente via credenciamento SAS - Evento ${eventDetails.id}`,
-        ativo: true
+        ativo: true,
       };
 
       const { data: newParticipant, error: createError } = await supabaseAdmin
@@ -107,9 +108,9 @@ export default async function handler(req, res) {
 
       if (createError) {
         console.error('Erro ao criar participante:', createError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           message: 'Erro ao criar participante',
-          error: createError.message 
+          error: createError.message,
         });
       }
 
@@ -127,17 +128,28 @@ export default async function handler(req, res) {
     let localRegistration;
     if (existingRegistration) {
       localRegistration = existingRegistration;
+      // Garantir que a inscrição esteja pelo menos confirmada
+      if (localRegistration.status !== 'confirmed') {
+        const { data: updatedReg } = await supabaseAdmin
+          .from('registrations')
+          .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+          .eq('id', localRegistration.id)
+          .select()
+          .single();
+        if (updatedReg) localRegistration = updatedReg;
+      }
     } else {
       // Criar nova inscrição
       const registrationData = {
         event_id: localEvent.id,
         participant_id: localParticipant.id,
         data_inscricao: new Date().toISOString(),
+        // Ao credenciar pelo sistema, confirmar a inscrição; presença será registrada em check_ins
         status: 'confirmed',
         forma_pagamento: 'sas',
-        valor_pago: 0.00,
+        valor_pago: 0.0,
         codigo_inscricao: `SAS-${eventDetails.id}-${cpfClean}`,
-        observacoes: `Inscrição criada automaticamente via credenciamento SAS`
+        observacoes: `Inscrição criada automaticamente via credenciamento SAS`,
       };
 
       const { data: newRegistration, error: regError } = await supabaseAdmin
@@ -148,9 +160,9 @@ export default async function handler(req, res) {
 
       if (regError) {
         console.error('Erro ao criar registro:', regError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           message: 'Erro ao criar registro de inscrição',
-          error: regError.message 
+          error: regError.message,
         });
       }
 
@@ -170,7 +182,7 @@ export default async function handler(req, res) {
         registration_id: localRegistration.id,
         data_check_in: new Date().toISOString(),
         responsavel_credenciamento: attendantName || 'Sistema SAS',
-        observacoes: `Check-in realizado automaticamente via sistema SAS`
+        observacoes: `Check-in realizado automaticamente via sistema SAS`,
       };
 
       const { data: newCheckIn, error: checkInError } = await supabaseAdmin
@@ -181,42 +193,41 @@ export default async function handler(req, res) {
 
       if (checkInError) {
         console.error('Erro ao criar check-in:', checkInError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           message: 'Erro ao criar check-in',
-          error: checkInError.message 
+          error: checkInError.message,
         });
       }
 
       console.log('Credenciamento registrado com sucesso no banco local');
-      
+
       return res.status(200).json({
         message: 'Credenciamento registrado com sucesso',
         data: {
           participant: localParticipant,
           event: localEvent,
           registration: localRegistration,
-          checkIn: newCheckIn
-        }
+          checkIn: newCheckIn,
+        },
       });
     } else {
       console.log('Check-in já existia para este participante');
-      
+
       return res.status(200).json({
         message: 'Participante já tinha check-in registrado',
         data: {
           participant: localParticipant,
           event: localEvent,
           registration: localRegistration,
-          checkIn: existingCheckIn
-        }
+          checkIn: existingCheckIn,
+        },
       });
     }
-
   } catch (error) {
     console.error('Erro geral no registro do credenciamento:', error);
     return res.status(500).json({
       message: 'Erro interno no registro do credenciamento',
-      error: error.message
+      error: error.message,
     });
   }
 }

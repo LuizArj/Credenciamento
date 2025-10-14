@@ -1,13 +1,13 @@
 /**
  * ParticipantReportPanel Component
- * 
+ *
  * Modal/panel displaying comprehensive participant report with:
  * - Participant personal details
  * - Event information
  * - Credentialing history timeline
  * - Status summary and statistics
  * - Export options
- * 
+ *
  * @module components/admin/participants/ParticipantReportPanel
  * @example
  * ```tsx
@@ -86,14 +86,21 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Fetch participant report
-  const { data: report, isLoading, error, refetch } = useQuery<ParticipantReport>({
+  const {
+    data: report,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<ParticipantReport>({
     queryKey: ['participant-report', participantId],
     queryFn: async () => {
       const response = await fetch(`/api/admin/participants/${participantId}/report`);
       if (!response.ok) {
-        throw new Error('Failed to fetch participant report');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch participant report');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data; // Extrair dados do campo 'data'
     },
     enabled: isOpen && !!participantId,
   });
@@ -197,6 +204,12 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
     }
   };
 
+  const safeDate = (value?: string | null) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -215,7 +228,7 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {isLoading ? 'Carregando...' : report?.participant.nome}
+                  {isLoading ? 'Carregando...' : report?.participant?.nome || 'Participante'}
                 </h2>
                 {report && (
                   <div className="mt-1 flex items-center gap-2">
@@ -226,9 +239,7 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
                     >
                       {report.participant.status_credenciamento}
                     </span>
-                    <span className="text-sm text-gray-500">
-                      CPF: {report.participant.cpf}
-                    </span>
+                    <span className="text-sm text-gray-500">CPF: {report.participant.cpf}</span>
                   </div>
                 )}
               </div>
@@ -261,45 +272,88 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
                       {actionLoading === 'credenciar' ? (
                         <>
                           <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
                           </svg>
                           Credenciando...
                         </>
                       ) : (
                         <>
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
                           </svg>
                           Credenciar
                         </>
                       )}
                     </button>
                   )}
-                  {report.participant.status_credenciamento === 'credenciado' && !report.participant.checked_in_at && (
-                    <button
-                      onClick={handleCheckIn}
-                      disabled={!!actionLoading}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 flex items-center gap-2"
-                    >
-                      {actionLoading === 'checkin' ? (
-                        <>
-                          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Fazendo check-in...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Check-in
-                        </>
-                      )}
-                    </button>
-                  )}
+                  {report.participant.status_credenciamento === 'credenciado' &&
+                    !report.participant.checked_in_at && (
+                      <button
+                        onClick={handleCheckIn}
+                        disabled={!!actionLoading}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 flex items-center gap-2"
+                      >
+                        {actionLoading === 'checkin' ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              />
+                            </svg>
+                            Fazendo check-in...
+                          </>
+                        ) : (
+                          <>
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                            Check-in
+                          </>
+                        )}
+                      </button>
+                    )}
                 </>
               )}
             </div>
@@ -356,19 +410,22 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <StatsCard
                           title="Total de Eventos"
-                          value={report.stats.total_events}
+                          value={report?.stats?.total_events ?? 0}
                           icon="calendar"
                           color="blue"
                         />
                         <StatsCard
                           title="Check-ins Realizados"
-                          value={report.stats.total_check_ins}
+                          value={report?.stats?.total_check_ins ?? 0}
                           icon="check"
                           color="green"
                         />
                         <StatsCard
                           title="Última Atividade"
-                          value={new Date(report.stats.last_activity).toLocaleDateString('pt-BR')}
+                          value={
+                            safeDate(report?.stats?.last_activity)?.toLocaleDateString('pt-BR') ||
+                            '—'
+                          }
                           icon="clock"
                           color="purple"
                         />
@@ -376,36 +433,50 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
 
                       {/* Participant Details */}
                       <div className="bg-gray-50 rounded-lg p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Informações Pessoais</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                          Informações Pessoais
+                        </h3>
                         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <dt className="text-sm font-medium text-gray-500">Nome Completo</dt>
-                            <dd className="mt-1 text-sm text-gray-900">{report.participant.nome}</dd>
+                            <dd className="mt-1 text-sm text-gray-900">
+                              {report.participant?.nome}
+                            </dd>
                           </div>
                           <div>
                             <dt className="text-sm font-medium text-gray-500">CPF</dt>
-                            <dd className="mt-1 text-sm text-gray-900">{report.participant.cpf}</dd>
+                            <dd className="mt-1 text-sm text-gray-900">
+                              {report.participant?.cpf}
+                            </dd>
                           </div>
                           <div>
                             <dt className="text-sm font-medium text-gray-500">Email</dt>
-                            <dd className="mt-1 text-sm text-gray-900">{report.participant.email}</dd>
+                            <dd className="mt-1 text-sm text-gray-900">
+                              {report.participant?.email}
+                            </dd>
                           </div>
-                          {report.participant.telefone && (
+                          {report.participant?.telefone && (
                             <div>
                               <dt className="text-sm font-medium text-gray-500">Telefone</dt>
-                              <dd className="mt-1 text-sm text-gray-900">{report.participant.telefone}</dd>
+                              <dd className="mt-1 text-sm text-gray-900">
+                                {report.participant?.telefone}
+                              </dd>
                             </div>
                           )}
-                          {report.participant.empresa && (
+                          {report.participant?.empresa && (
                             <div>
                               <dt className="text-sm font-medium text-gray-500">Empresa</dt>
-                              <dd className="mt-1 text-sm text-gray-900">{report.participant.empresa}</dd>
+                              <dd className="mt-1 text-sm text-gray-900">
+                                {report.participant?.empresa}
+                              </dd>
                             </div>
                           )}
-                          {report.participant.cargo && (
+                          {report.participant?.cargo && (
                             <div>
                               <dt className="text-sm font-medium text-gray-500">Cargo</dt>
-                              <dd className="mt-1 text-sm text-gray-900">{report.participant.cargo}</dd>
+                              <dd className="mt-1 text-sm text-gray-900">
+                                {report.participant?.cargo}
+                              </dd>
                             </div>
                           )}
                         </dl>
@@ -414,38 +485,62 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
                       {/* Event Details */}
                       <div className="bg-gray-50 rounded-lg p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Evento Atual</h3>
-                        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <dt className="text-sm font-medium text-gray-500">Nome do Evento</dt>
-                            <dd className="mt-1 text-sm text-gray-900">{report.event.nome}</dd>
+                        {report?.event ? (
+                          <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <dt className="text-sm font-medium text-gray-500">Nome do Evento</dt>
+                              <dd className="mt-1 text-sm text-gray-900">{report.event?.nome}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-sm font-medium text-gray-500">Data</dt>
+                              <dd className="mt-1 text-sm text-gray-900">
+                                {report.event?.data_inicio
+                                  ? new Date(report.event.data_inicio).toLocaleDateString('pt-BR')
+                                  : '—'}{' '}
+                                {report.event?.data_fim
+                                  ? `- ${new Date(report.event.data_fim).toLocaleDateString('pt-BR')}`
+                                  : ''}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-sm font-medium text-gray-500">Local</dt>
+                              <dd className="mt-1 text-sm text-gray-900">
+                                {report.event?.local || '—'}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-sm font-medium text-gray-500">Cidade</dt>
+                              <dd className="mt-1 text-sm text-gray-900">
+                                {report.event?.cidade || '—'}
+                              </dd>
+                            </div>
+                          </dl>
+                        ) : (
+                          <div className="text-sm text-gray-500">
+                            Nenhum evento associado encontrado.
                           </div>
-                          <div>
-                            <dt className="text-sm font-medium text-gray-500">Data</dt>
-                            <dd className="mt-1 text-sm text-gray-900">
-                              {new Date(report.event.data_inicio).toLocaleDateString('pt-BR')} -{' '}
-                              {new Date(report.event.data_fim).toLocaleDateString('pt-BR')}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-sm font-medium text-gray-500">Local</dt>
-                            <dd className="mt-1 text-sm text-gray-900">{report.event.local}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-sm font-medium text-gray-500">Cidade</dt>
-                            <dd className="mt-1 text-sm text-gray-900">{report.event.cidade}</dd>
-                          </div>
-                        </dl>
+                        )}
                       </div>
 
                       {/* Check-in Info */}
-                      {report.participant.checked_in_at && (
+                      {report.participant?.checked_in_at && (
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                           <div className="flex items-center">
-                            <svg className="h-5 w-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            <svg
+                              className="h-5 w-5 text-green-600 mr-2"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                clipRule="evenodd"
+                              />
                             </svg>
                             <div>
-                              <p className="text-sm font-medium text-green-800">Check-in realizado</p>
+                              <p className="text-sm font-medium text-green-800">
+                                Check-in realizado
+                              </p>
                               <p className="text-xs text-green-600">
                                 {new Date(report.participant.checked_in_at).toLocaleString('pt-BR')}
                               </p>
@@ -505,14 +600,18 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
                                           )}
                                         </p>
                                         <p className="text-xs text-gray-500">
-                                          {new Date(entry.created_at).toLocaleString('pt-BR')}
+                                          {safeDate(entry.created_at)?.toLocaleString('pt-BR') ||
+                                            '—'}
                                         </p>
                                       </div>
                                       {(entry.status_before || entry.status_after) && (
                                         <div className="mt-2 text-sm text-gray-700">
                                           {entry.status_before && (
                                             <span className="text-gray-500">
-                                              De: <span className="font-medium">{entry.status_before}</span>
+                                              De:{' '}
+                                              <span className="font-medium">
+                                                {entry.status_before}
+                                              </span>
                                             </span>
                                           )}
                                           {entry.status_before && entry.status_after && (
@@ -520,7 +619,10 @@ const ParticipantReportPanel: React.FC<ParticipantReportPanelProps> = ({
                                           )}
                                           {entry.status_after && (
                                             <span className="text-gray-500">
-                                              Para: <span className="font-medium">{entry.status_after}</span>
+                                              Para:{' '}
+                                              <span className="font-medium">
+                                                {entry.status_after}
+                                              </span>
                                             </span>
                                           )}
                                         </div>

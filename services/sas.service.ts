@@ -1,14 +1,16 @@
 /**
  * SAS Service
- * 
+ *
  * @description Serviço de integração com a API do SAS (Sistema de Atendimento do Sebrae)
  * @version 1.0.0
  */
 
-import { createClient } from '@supabase/supabase-js';
 import type { SASEvent, SASParticipant } from '@/schemas';
+import { normalizeCPF } from '@/lib/utils/cpf';
+import { getSupabaseAdmin } from '@/lib/config/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database.types';
 
-// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -45,15 +47,17 @@ interface SASEventRaw {
 }
 
 interface SASParticipantRaw {
-  CPF: string;
-  Nome: string;
-  Email?: string;
-  Telefone?: string;
-  Empresa?: string;
-  Cargo?: string;
-  Vinculo?: string;
-  Categoria?: string;
-  Status?: string;
+  CPF: number;
+  NomeRazaoSocialPF: string;
+  NomeRazaoSocialPJ: string | null;
+  Email: string;
+  Telefone: string;
+  CNPJ: string | null;
+  Situacao: string; // "Inscrito", "Reserva", etc.
+  TipoParticipanteNome: string;
+  EventoID: number;
+  EventoNome: string;
+  DataInclusao: string;
 }
 
 interface FetchEventOptions {
@@ -85,10 +89,9 @@ const SAS_BASE_URL = 'https://sas.sebrae.com.br/SasServiceDisponibilizacoes';
 const SAS_API_KEY = process.env.SEBRAE_API_KEY || '';
 const SAS_COD_UF = process.env.SEBRAE_COD_UF || '24'; // Roraima
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Helper para obter Supabase admin de forma lazy (somente quando necessário)
+// Agora tipado corretamente para garantir segurança de tipos
+const getSupabase = (): SupabaseClient<Database> => getSupabaseAdmin();
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -140,6 +143,17 @@ function formatDateBrazilian(date: Date): string {
  * Mapeia dados brutos do SAS para o formato do sistema
  */
 function mapSASEventToSystem(sasEvent: SASEventRaw): SASEvent {
+  // Normalizar modalidade para lowercase conforme CHECK constraint do banco
+  let modalidade = 'presencial'; // default
+  if (sasEvent.ModalidadeNome) {
+    const modalidadeLower = sasEvent.ModalidadeNome.toLowerCase();
+    if (modalidadeLower.includes('online') || modalidadeLower.includes('ead')) {
+      modalidade = 'online';
+    } else if (modalidadeLower.includes('hibrido') || modalidadeLower.includes('híbrido')) {
+      modalidade = 'hibrido';
+    }
+  }
+
   return {
     codevento: sasEvent.CodEvento?.toString() || '',
     nome: sasEvent.TituloEvento || 'Evento SAS',
@@ -147,8 +161,9 @@ function mapSASEventToSystem(sasEvent: SASEventRaw): SASEvent {
     data_inicio: sasEvent.PeriodoInicial || new Date().toISOString(),
     data_fim: sasEvent.PeriodoFinal || new Date().toISOString(),
     local: sasEvent.Local || 'Local não informado',
-    modalidade: sasEvent.ModalidadeNome?.toUpperCase() as 'PRESENCIAL' | 'ONLINE' | 'HIBRIDO' || 'PRESENCIAL',
-    status: sasEvent.Situacao === 'Disponível' ? 'active' : 'inactive',
+    modalidade,
+    // Alinhar com o enum do banco: usar 'draft' quando não disponível
+    status: sasEvent.Situacao === 'Disponível' ? 'active' : 'draft',
     tipo_evento: sasEvent.InstrumentoNome || 'Evento',
     publico_alvo: sasEvent.TipoPublico === 'Aberto' ? 'Público geral' : 'Público específico',
     instrumento: sasEvent.InstrumentoNome || '',
@@ -170,16 +185,19 @@ function mapSASEventToSystem(sasEvent: SASEventRaw): SASEvent {
  * Mapeia participante do SAS para o formato do sistema
  */
 function mapSASParticipantToSystem(sasParticipant: SASParticipantRaw): SASParticipant {
+  // Formatar CPF para string com zeros à esquerda
+  const cpf = String(sasParticipant.CPF).padStart(11, '0');
+
   return {
-    cpf: sasParticipant.CPF.replace(/\D/g, ''), // Remove formatação
-    nome: sasParticipant.Nome,
-    email: sasParticipant.Email,
-    telefone: sasParticipant.Telefone,
-    empresa: sasParticipant.Empresa,
-    cargo: sasParticipant.Cargo,
-    vinculo: sasParticipant.Vinculo,
-    categoria: sasParticipant.Categoria,
-    status: sasParticipant.Status,
+    cpf,
+    nome: sasParticipant.NomeRazaoSocialPF,
+    email: sasParticipant.Email?.toLowerCase() || '',
+    telefone: sasParticipant.Telefone || undefined,
+    empresa: sasParticipant.NomeRazaoSocialPJ || undefined,
+    cargo: undefined,
+    vinculo: sasParticipant.TipoParticipanteNome || undefined,
+    categoria: sasParticipant.TipoParticipanteNome || undefined,
+    status: sasParticipant.Situacao || undefined,
   };
 }
 
@@ -278,21 +296,15 @@ export class SASService {
    * Busca participantes de um evento no SAS
    */
   async fetchParticipants(options: FetchParticipantsOptions): Promise<SASParticipant[]> {
-    const { codEvento, year } = options;
-    const apiUrl = `${SAS_BASE_URL}/Evento/ConsultarParticipantes`;
-
-    const currentYear = year || new Date().getFullYear();
-    const startDate = new Date(currentYear, 0, 1);
-    const endDate = new Date(currentYear, 11, 31);
+    const { codEvento } = options;
+    const apiUrl = `${SAS_BASE_URL}/Evento/ConsultarParticipante`;
 
     const queryParams = new URLSearchParams({
       CodSebrae: SAS_COD_UF,
       CodEvento: codEvento,
-      PeriodoInicial: formatDateBrazilian(startDate),
-      PeriodoFinal: formatDateBrazilian(endDate),
     });
 
-    console.log(`[SAS] Buscando participantes do evento ${codEvento}`);
+    console.log(`[SAS] Buscando participantes do evento ${codEvento} em: ${apiUrl}?${queryParams}`);
 
     const response = await fetch(`${apiUrl}?${queryParams}`, {
       method: 'GET',
@@ -303,7 +315,11 @@ export class SASService {
     });
 
     if (!response.ok) {
-      throw new Error(`Erro ao buscar participantes do evento ${codEvento}`);
+      const errorText = await response.text();
+      console.error(`[SAS] Erro ao buscar participantes:`, errorText);
+      throw new Error(
+        `Erro ao buscar participantes do evento ${codEvento}: ${response.status} ${response.statusText}`
+      );
     }
 
     const data = await response.json();
@@ -323,8 +339,9 @@ export class SASService {
   async syncEventToSupabase(options: SyncEventOptions): Promise<string> {
     const { eventData, overwrite = false } = options;
 
+    const supabase = getSupabase();
     // Verificar se evento já existe
-    const { data: existingEvent } = await supabaseAdmin
+    const { data: existingEvent }: any = await supabase
       .from('events')
       .select('id')
       .eq('codevento_sas', eventData.codevento)
@@ -336,33 +353,28 @@ export class SASService {
     }
 
     // Preparar dados para inserção/atualização
-    const eventToSave = {
+    // Apenas campos que existem na tabela events do schema
+    const eventToSave: Database['public']['Tables']['events']['Update'] = {
       nome: eventData.nome,
-      descricao: eventData.descricao,
+      descricao: eventData.descricao ?? null,
       data_inicio: eventData.data_inicio,
       data_fim: eventData.data_fim,
       local: eventData.local,
-      modalidade: eventData.modalidade,
-      status: eventData.status,
-      tipo_evento: eventData.tipo_evento,
-      publico_alvo: eventData.publico_alvo,
-      instrumento: eventData.instrumento,
-      capacidade: eventData.capacidade,
-      minimo_participantes: eventData.minimo_participantes,
-      vagas_disponiveis: eventData.vagas_disponiveis,
-      carga_horaria: eventData.carga_horaria,
-      preco: eventData.preco,
-      gratuito: eventData.gratuito,
-      solucao: eventData.solucao,
-      unidade: eventData.unidade,
-      projeto: eventData.codigo_projeto,
+      modalidade:
+        eventData.modalidade as Database['public']['Tables']['events']['Update']['modalidade'],
+      status: eventData.status as Database['public']['Tables']['events']['Update']['status'],
+      tipo_evento: eventData.tipo_evento ?? null,
+      publico_alvo: eventData.publico_alvo ?? null,
+      capacidade: eventData.capacidade ?? null,
+      solucao: eventData.solucao ?? null,
+      unidade: eventData.unidade ?? null,
       codevento_sas: eventData.codevento,
       updated_at: new Date().toISOString(),
     };
 
     if (existingEvent && overwrite) {
       // Atualizar evento existente
-      const { error } = await supabaseAdmin
+      const { error } = await supabase
         .from('events')
         .update(eventToSave)
         .eq('id', existingEvent.id);
@@ -375,9 +387,18 @@ export class SASService {
       return existingEvent.id;
     } else {
       // Criar novo evento
-      const { data: newEvent, error } = await supabaseAdmin
+      const eventInsert: Database['public']['Tables']['events']['Insert'] = {
+        ...eventToSave,
+        created_at: new Date().toISOString(),
+        // Campos obrigatórios garantidos no Insert
+        nome: eventData.nome,
+        data_inicio: eventData.data_inicio,
+        data_fim: eventData.data_fim,
+      } as Database['public']['Tables']['events']['Insert'];
+
+      const { data: newEvent, error } = await supabase
         .from('events')
-        .insert({ ...eventToSave, created_at: new Date().toISOString() })
+        .insert(eventInsert)
         .select('id')
         .single();
 
@@ -386,12 +407,13 @@ export class SASService {
       }
 
       console.log(`[SAS] ✅ Evento ${eventData.codevento} criado`);
-      return newEvent.id;
+      return (newEvent as { id: string }).id;
     }
   }
 
   /**
    * Sincroniza participantes do SAS para o Supabase
+   * IMPORTANTE: participants não tem event_id. O relacionamento é via registrations.
    */
   async syncParticipantsToSupabase(options: SyncParticipantsOptions): Promise<{
     inserted: number;
@@ -400,59 +422,98 @@ export class SASService {
   }> {
     const { eventId, participants, overwrite = false } = options;
 
+    const supabase = getSupabase();
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
 
     for (const participant of participants) {
       try {
-        // Verificar se participante já existe neste evento
-        const { data: existing } = await supabaseAdmin
+        // Verificar se participante já existe (por CPF)
+        const { data: existingParticipant }: any = await supabase
           .from('participants')
           .select('id')
-          .eq('event_id', eventId)
           .eq('cpf', participant.cpf)
           .single();
 
+        // Dados básicos do participante (apenas campos que existem na tabela)
         const participantData = {
-          event_id: eventId,
           nome: participant.nome,
           email: participant.email || '',
           cpf: participant.cpf,
-          telefone: participant.telefone,
-          empresa: participant.empresa,
-          cargo: participant.cargo,
-          vinculo: participant.vinculo,
-          categoria: participant.categoria,
-          source: 'sas' as const,
-          status_credenciamento: 'pending' as const,
+          telefone: participant.telefone || null,
+          fonte: 'sas' as const,
         };
 
-        if (existing) {
-          if (overwrite) {
-            // Atualizar participante existente
-            const { error } = await supabaseAdmin
-              .from('participants')
-              .update({ ...participantData, updated_at: new Date().toISOString() })
-              .eq('id', existing.id);
+        let participantId: string;
 
-            if (error) {
-              console.error(`[SAS] Erro ao atualizar participante ${participant.cpf}:`, error);
-              skipped++;
-            } else {
-              updated++;
-            }
+        if (existingParticipant) {
+          participantId = existingParticipant.id;
+
+          if (overwrite) {
+            // Atualizar dados do participante
+            const participantUpdate: Database['public']['Tables']['participants']['Update'] = {
+              ...participantData,
+              updated_at: new Date().toISOString(),
+            };
+            await supabase.from('participants').update(participantUpdate).eq('id', participantId);
+          }
+        } else {
+          // Criar novo participante
+          const participantInsert: Database['public']['Tables']['participants']['Insert'] = {
+            ...participantData,
+            created_at: new Date().toISOString(),
+          };
+          const { data: newParticipant, error: insertError } = await supabase
+            .from('participants')
+            .insert(participantInsert)
+            .select('id')
+            .single();
+
+          if (insertError || !newParticipant) {
+            console.error(`[SAS] Erro ao inserir participante ${participant.cpf}:`, insertError);
+            skipped++;
+            continue;
+          }
+
+          participantId = (newParticipant as { id: string }).id;
+        }
+
+        // Verificar se já existe registration para este participante neste evento
+        const { data: existingReg }: any = await supabase
+          .from('registrations')
+          .select('id, status')
+          .eq('event_id', eventId)
+          .eq('participant_id', participantId)
+          .single();
+
+        if (existingReg) {
+          if (overwrite) {
+            // Atualizar status da registration se necessário
+            const newStatus: Database['public']['Tables']['registrations']['Update']['status'] =
+              participant.status === 'confirmed' ? 'confirmed' : 'registered';
+            const regUpdate: Database['public']['Tables']['registrations']['Update'] = {
+              status: newStatus,
+              updated_at: new Date().toISOString(),
+            };
+            await supabase.from('registrations').update(regUpdate).eq('id', existingReg.id);
+            updated++;
           } else {
             skipped++;
           }
         } else {
-          // Criar novo participante
-          const { error } = await supabaseAdmin
-            .from('participants')
-            .insert({ ...participantData, created_at: new Date().toISOString() });
+          // Criar nova registration
+          const registrationData: Database['public']['Tables']['registrations']['Insert'] = {
+            event_id: eventId,
+            participant_id: participantId,
+            status: participant.status === 'confirmed' ? 'confirmed' : 'registered',
+            data_inscricao: new Date().toISOString(),
+          };
 
-          if (error) {
-            console.error(`[SAS] Erro ao inserir participante ${participant.cpf}:`, error);
+          const { error: regError } = await supabase.from('registrations').insert(registrationData);
+
+          if (regError) {
+            console.error(`[SAS] Erro ao criar registration para ${participant.cpf}:`, regError);
             skipped++;
           } else {
             inserted++;
@@ -464,7 +525,9 @@ export class SASService {
       }
     }
 
-    console.log(`[SAS] ✅ Sincronização concluída: ${inserted} inseridos, ${updated} atualizados, ${skipped} ignorados`);
+    console.log(
+      `[SAS] ✅ Sincronização concluída: ${inserted} inseridos, ${updated} atualizados, ${skipped} ignorados`
+    );
 
     return { inserted, updated, skipped };
   }

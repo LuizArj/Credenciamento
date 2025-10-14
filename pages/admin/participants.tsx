@@ -1,12 +1,12 @@
 /**
  * Participants Management Page
- * 
+ *
  * Admin page for managing participants with:
  * - Participant listing with filters
  * - Participant creation and editing
  * - Participant report panel with history
  * - Export to Excel/PDF
- * 
+ *
  * @module pages/admin/participants
  */
 
@@ -14,6 +14,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '../../components/AdminLayout';
 import { withAdminProtection } from '../../components/withAdminProtection';
+import { formatCPF } from '@/lib/utils/cpf';
 import FilterBar, { FilterValues } from '../../components/admin/shared/FilterBar';
 import ParticipantReportPanel from '../../components/admin/participants/ParticipantReportPanel';
 import ExportButton from '../../components/admin/shared/ExportButton';
@@ -46,14 +47,14 @@ interface FormData {
 
 const ParticipantsManagement: React.FC = () => {
   const queryClient = useQueryClient();
-  
+
   // State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
   const [filters, setFilters] = useState<FilterValues>({ search: '', status: '' });
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  
+
   const [formData, setFormData] = useState<FormData>({
     name: '',
     cpf: '',
@@ -64,13 +65,17 @@ const ParticipantsManagement: React.FC = () => {
   });
 
   // Fetch participants with filters
-  const { data: participantsResponse, isLoading, error } = useQuery({
+  const {
+    data: participantsResponse,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['participants', filters],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
       if (filters.status) params.append('status', filters.status);
-      
+
       const response = await fetch(`/api/admin/participants?${params.toString()}`);
       if (!response.ok) {
         throw new Error('Falha ao carregar participantes');
@@ -177,7 +182,11 @@ const ParticipantsManagement: React.FC = () => {
         cpf: participant.cpf,
         email: participant.email,
         phone: participant.telefone || '',
-        company: participant.empresa || participant.company?.razao_social || participant.company?.nome_fantasia || '',
+        company:
+          participant.empresa ||
+          participant.company?.razao_social ||
+          participant.company?.nome_fantasia ||
+          '',
         cargo: participant.cargo || '',
       });
     } else {
@@ -272,7 +281,7 @@ const ParticipantsManagement: React.FC = () => {
     return (
       <AdminLayout title="Gerenciar Participantes">
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-red-800">Erro ao carregar participantes: {(error as Error).message}</p>
+          <p className="text-red-800">Erro ao carregar participantes: {error.message}</p>
         </div>
       </AdminLayout>
     );
@@ -296,7 +305,12 @@ const ParticipantsManagement: React.FC = () => {
             className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             Adicionar Participante
           </button>
@@ -307,11 +321,8 @@ const ParticipantsManagement: React.FC = () => {
       <FilterBar
         searchPlaceholder="Buscar por nome, CPF ou email..."
         onFilterChange={setFilters}
-        statusOptions={[
-          { value: 'credenciado', label: 'Credenciado' },
-          { value: 'nao_credenciado', label: 'Não Credenciado' },
-          { value: 'cancelado', label: 'Cancelado' },
-        ]}
+        // Status filter removido – listamos apenas credenciados
+        statusOptions={[]}
         actions={[
           {
             label: 'Exportar Todos',
@@ -349,12 +360,7 @@ const ParticipantsManagement: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Empresa
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Check-in
-                    </th>
+                    {/* Colunas de Status e Check-in removidas */}
                     <th className="relative px-6 py-3">
                       <span className="sr-only">Ações</span>
                     </th>
@@ -378,7 +384,7 @@ const ParticipantsManagement: React.FC = () => {
                           {participant.nome}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.cpf}
+                          {formatCPF(participant.cpf)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {participant.email}
@@ -387,35 +393,10 @@ const ParticipantsManagement: React.FC = () => {
                           {participant.telefone || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.empresa ||
-                            participant.company?.razao_social ||
+                          {participant.company?.razao_social ||
                             participant.company?.nome_fantasia ||
+                            participant.empresa ||
                             'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(
-                              participant.status_credenciamento
-                            )}`}
-                          >
-                            {participant.status_credenciamento.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.checked_in_at ? (
-                            <span className="text-green-600 flex items-center">
-                              <svg className="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                              Sim
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <button
@@ -475,9 +456,7 @@ const ParticipantsManagement: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-gray-700 text-sm font-bold mb-2">
-                        CPF *
-                      </label>
+                      <label className="block text-gray-700 text-sm font-bold mb-2">CPF *</label>
                       <input
                         type="text"
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -489,9 +468,7 @@ const ParticipantsManagement: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-gray-700 text-sm font-bold mb-2">
-                        Email *
-                      </label>
+                      <label className="block text-gray-700 text-sm font-bold mb-2">Email *</label>
                       <input
                         type="email"
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -502,9 +479,7 @@ const ParticipantsManagement: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-gray-700 text-sm font-bold mb-2">
-                        Telefone
-                      </label>
+                      <label className="block text-gray-700 text-sm font-bold mb-2">Telefone</label>
                       <input
                         type="tel"
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -515,9 +490,7 @@ const ParticipantsManagement: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-gray-700 text-sm font-bold mb-2">
-                        Empresa
-                      </label>
+                      <label className="block text-gray-700 text-sm font-bold mb-2">Empresa</label>
                       <input
                         type="text"
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -527,9 +500,7 @@ const ParticipantsManagement: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-gray-700 text-sm font-bold mb-2">
-                        Cargo
-                      </label>
+                      <label className="block text-gray-700 text-sm font-bold mb-2">Cargo</label>
                       <input
                         type="text"
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -543,14 +514,16 @@ const ParticipantsManagement: React.FC = () => {
                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                   <button
                     type="submit"
-                    disabled={createParticipantMutation.isPending || updateParticipantMutation.isPending}
+                    disabled={
+                      createParticipantMutation.isPending || updateParticipantMutation.isPending
+                    }
                     className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:bg-blue-300"
                   >
-                    {(createParticipantMutation.isPending || updateParticipantMutation.isPending)
+                    {createParticipantMutation.isPending || updateParticipantMutation.isPending
                       ? 'Salvando...'
                       : editingParticipant
-                      ? 'Atualizar'
-                      : 'Criar'}
+                        ? 'Atualizar'
+                        : 'Criar'}
                   </button>
                   <button
                     type="button"

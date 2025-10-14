@@ -22,78 +22,146 @@ async function handler(req, res) {
   }
 }
 
-// ===== GET - Buscar participantes =====
+// ===== GET - Buscar participantes (somente credenciados) =====
 async function handleGet(req, res) {
   try {
-    const { search, eventId, companyId, status, page = 1, limit = 10 } = req.query;
-    
-    // Primeiro, buscar apenas os participantes básicos
+    const { search, eventId, page = 1, limit = 10 } = req.query;
+
+    // Buscar registros de inscrições (registrations) com status credenciado
+    // Consideramos credenciado quando status === 'confirmed'
     let query = supabaseAdmin
-      .from('participants')
-      .select('*')
-      .order('nome', { ascending: true });
+      .from('registrations')
+      .select(
+        `
+        participant_id,
+        status,
+        participants!inner (
+          id,
+          cpf,
+          nome,
+          email,
+          telefone,
+          cargo,
+          fonte,
+          company_id,
+          created_at,
+          updated_at,
+          companies (
+            id,
+            cnpj,
+            razao_social,
+            nome_fantasia
+          )
+        )
+      `,
+        { count: 'exact' }
+      )
+      .eq('status', 'confirmed')
+      .order('participant_id', { ascending: true });
 
-    // Filtros
+    if (eventId) {
+      query = query.eq('event_id', eventId);
+    }
+
     if (search) {
-      query = query.or(`nome.ilike.%${search}%, cpf.ilike.%${search}%, email.ilike.%${search}%`);
+      // Buscar por nome/cpf/email do participante
+      // PostgREST permite referenciar colunas aninhadas usando o caminho
+      query = query.or(
+        `participants.nome.ilike.%${search}%,participants.cpf.ilike.%${search}%,participants.email.ilike.%${search}%`
+      );
     }
 
-    if (companyId) {
-      query = query.eq('company_id', companyId);
-    }
-
-    if (status === 'active') {
-      query = query.eq('ativo', true);
-    } else if (status === 'inactive') {
-      query = query.eq('ativo', false);
-    }
-
-    // Paginação
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    query = query.range(offset, offset + parseInt(limit) - 1);
-
-    const { data: participants, error, count } = await query;
+    const { data: regs, error } = await query;
 
     if (error) {
-      console.error('Erro ao buscar participantes:', error);
-      return res.status(500).json({ error: 'Erro ao buscar participantes' });
+      console.error('Erro ao buscar participantes credenciados:', error);
+      return res.status(500).json({ error: 'Erro ao buscar participantes credenciados' });
     }
 
-    // Se não há participantes, retornar array vazio
-    if (!participants || participants.length === 0) {
+    if (!regs || regs.length === 0) {
       return res.status(200).json({
         participants: [],
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: 0
-        }
+          total: 0,
+        },
       });
     }
 
-    // Processar dados básicos sem relacionamentos por enquanto
-    const participantsWithStats = participants.map(participant => {
-      return {
-        ...participant,
-        company: null, // Por enquanto null até configurar as relações
-        registrations: [],
-        totalEvents: 0,
-        checkedInEvents: 0,
-        cancelledEvents: 0,
-        lastCheckIn: null,
-        lastCheckInBy: null
-      };
-    });
+    // Deduplicar por CPF e consolidar informações em um único perfil
+    const byCpf = new Map();
+
+    const normalizeCpf = (cpf) => (cpf || '').replace(/\D/g, '');
+
+    for (const row of regs) {
+      const p = row.participants;
+      if (!p) continue;
+      const cpfKey = normalizeCpf(p.cpf);
+
+      const company = p.companies || null;
+
+      if (!byCpf.has(cpfKey)) {
+        byCpf.set(cpfKey, {
+          id: p.id,
+          cpf: p.cpf,
+          nome: p.nome,
+          email: p.email || null,
+          telefone: p.telefone || null,
+          cargo: p.cargo || null,
+          fonte: p.fonte || null,
+          company: company
+            ? {
+                id: company.id,
+                cnpj: company.cnpj,
+                razao_social: company.razao_social,
+                nome_fantasia: company.nome_fantasia,
+              }
+            : null,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+        });
+      } else {
+        // Concatenar informações faltantes
+        const acc = byCpf.get(cpfKey);
+        acc.nome = acc.nome || p.nome;
+        acc.email = acc.email || p.email;
+        acc.telefone = acc.telefone || p.telefone;
+        acc.cargo = acc.cargo || p.cargo;
+        acc.fonte = acc.fonte || p.fonte;
+        if (!acc.company && company) {
+          acc.company = {
+            id: company.id,
+            cnpj: company.cnpj,
+            razao_social: company.razao_social,
+            nome_fantasia: company.nome_fantasia,
+          };
+        }
+        // Preferir updated_at mais recente
+        if (p.updated_at && (!acc.updated_at || p.updated_at > acc.updated_at)) {
+          acc.updated_at = p.updated_at;
+        }
+      }
+    }
+
+    // Ordenar por nome e paginar após deduplicação
+    const all = Array.from(byCpf.values()).sort((a, b) =>
+      (a.nome || '').localeCompare(b.nome || '')
+    );
+    const total = all.length;
+    const pageNum = parseInt(page);
+    const pageSize = parseInt(limit);
+    const start = (pageNum - 1) * pageSize;
+    const sliced = all.slice(start, start + pageSize);
 
     return res.status(200).json({
-      participants: participantsWithStats,
+      participants: sliced,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count || 0
-      }
+        page: pageNum,
+        limit: pageSize,
+        total,
+      },
     });
-
   } catch (error) {
     console.error('Erro inesperado ao buscar participantes:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -116,21 +184,21 @@ async function handlePost(req, res) {
       endereco,
       fonte = 'manual',
       dadosExternos = {},
-      company // pode ser um ID ou dados da empresa
+      company, // pode ser um ID ou dados da empresa
     } = req.body;
 
     // Validações
     if (!cpf || !nome) {
-      return res.status(400).json({ 
-        error: 'CPF e nome são obrigatórios' 
+      return res.status(400).json({
+        error: 'CPF e nome são obrigatórios',
       });
     }
 
     // Validar formato do CPF (básico)
     const cpfClean = cpf.replace(/\D/g, '');
     if (cpfClean.length !== 11) {
-      return res.status(400).json({ 
-        error: 'CPF deve ter 11 dígitos' 
+      return res.status(400).json({
+        error: 'CPF deve ter 11 dígitos',
       });
     }
 
@@ -142,8 +210,8 @@ async function handlePost(req, res) {
       .single();
 
     if (existingParticipant) {
-      return res.status(400).json({ 
-        error: 'Já existe um participante com este CPF' 
+      return res.status(400).json({
+        error: 'Já existe um participante com este CPF',
       });
     }
 
@@ -167,14 +235,16 @@ async function handlePost(req, res) {
           // Criar nova empresa
           const { data: newCompany, error: companyError } = await supabaseAdmin
             .from('companies')
-            .insert([{
-              cnpj: company.cnpj,
-              razao_social: company.razaoSocial || company.razao_social,
-              nome_fantasia: company.nomeFantasia || company.nome_fantasia,
-              telefone: company.telefone,
-              email: company.email,
-              endereco: company.endereco
-            }])
+            .insert([
+              {
+                cnpj: company.cnpj,
+                razao_social: company.razaoSocial || company.razao_social,
+                nome_fantasia: company.nomeFantasia || company.nome_fantasia,
+                telefone: company.telefone,
+                email: company.email,
+                endereco: company.endereco,
+              },
+            ])
             .select()
             .single();
 
@@ -191,22 +261,25 @@ async function handlePost(req, res) {
     // Criar o participante
     const { data: participant, error: participantError } = await supabaseAdmin
       .from('participants')
-      .insert([{
-        cpf,
-        nome,
-        email,
-        telefone,
-        data_nascimento: dataNascimento,
-        genero,
-        escolaridade,
-        profissao,
-        company_id: companyId,
-        cargo,
-        endereco,
-        fonte,
-        dados_externos: dadosExternos
-      }])
-      .select(`
+      .insert([
+        {
+          cpf,
+          nome,
+          email,
+          telefone,
+          data_nascimento: dataNascimento,
+          genero,
+          escolaridade,
+          profissao,
+          company_id: companyId,
+          cargo,
+          endereco,
+          fonte,
+          dados_externos: dadosExternos,
+        },
+      ])
+      .select(
+        `
         *,
         companies (
           id,
@@ -214,7 +287,8 @@ async function handlePost(req, res) {
           razao_social,
           nome_fantasia
         )
-      `)
+      `
+      )
       .single();
 
     if (participantError) {
@@ -223,7 +297,6 @@ async function handlePost(req, res) {
     }
 
     return res.status(201).json(participant);
-
   } catch (error) {
     console.error('Erro inesperado ao criar participante:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -260,8 +333,8 @@ async function handlePut(req, res) {
         .single();
 
       if (cpfConflict) {
-        return res.status(400).json({ 
-          error: 'Já existe outro participante com este CPF' 
+        return res.status(400).json({
+          error: 'Já existe outro participante com este CPF',
         });
       }
     }
@@ -285,14 +358,16 @@ async function handlePut(req, res) {
         } else {
           const { data: newCompany, error: companyError } = await supabaseAdmin
             .from('companies')
-            .insert([{
-              cnpj: company.cnpj,
-              razao_social: company.razaoSocial || company.razao_social,
-              nome_fantasia: company.nomeFantasia || company.nome_fantasia,
-              telefone: company.telefone,
-              email: company.email,
-              endereco: company.endereco
-            }])
+            .insert([
+              {
+                cnpj: company.cnpj,
+                razao_social: company.razaoSocial || company.razao_social,
+                nome_fantasia: company.nomeFantasia || company.nome_fantasia,
+                telefone: company.telefone,
+                email: company.email,
+                endereco: company.endereco,
+              },
+            ])
             .select()
             .single();
 
@@ -312,14 +387,17 @@ async function handlePut(req, res) {
     if (participantData.nome) updateData.nome = participantData.nome;
     if (participantData.email !== undefined) updateData.email = participantData.email;
     if (participantData.telefone !== undefined) updateData.telefone = participantData.telefone;
-    if (participantData.dataNascimento !== undefined) updateData.data_nascimento = participantData.dataNascimento;
+    if (participantData.dataNascimento !== undefined)
+      updateData.data_nascimento = participantData.dataNascimento;
     if (participantData.genero !== undefined) updateData.genero = participantData.genero;
-    if (participantData.escolaridade !== undefined) updateData.escolaridade = participantData.escolaridade;
+    if (participantData.escolaridade !== undefined)
+      updateData.escolaridade = participantData.escolaridade;
     if (participantData.profissao !== undefined) updateData.profissao = participantData.profissao;
     if (participantData.cargo !== undefined) updateData.cargo = participantData.cargo;
     if (participantData.endereco !== undefined) updateData.endereco = participantData.endereco;
     if (participantData.fonte) updateData.fonte = participantData.fonte;
-    if (participantData.dadosExternos !== undefined) updateData.dados_externos = participantData.dadosExternos;
+    if (participantData.dadosExternos !== undefined)
+      updateData.dados_externos = participantData.dadosExternos;
     if (participantData.ativo !== undefined) updateData.ativo = participantData.ativo;
     if (companyId !== undefined) updateData.company_id = companyId;
 
@@ -328,7 +406,8 @@ async function handlePut(req, res) {
       .from('participants')
       .update(updateData)
       .eq('id', id)
-      .select(`
+      .select(
+        `
         *,
         companies (
           id,
@@ -336,7 +415,8 @@ async function handlePut(req, res) {
           razao_social,
           nome_fantasia
         )
-      `)
+      `
+      )
       .single();
 
     if (updateError) {
@@ -345,7 +425,6 @@ async function handlePut(req, res) {
     }
 
     return res.status(200).json(updatedParticipant);
-
   } catch (error) {
     console.error('Erro inesperado ao atualizar participante:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -374,16 +453,14 @@ async function handleDelete(req, res) {
     }
 
     if (registrations && registrations.length > 0) {
-      return res.status(400).json({ 
-        error: 'Não é possível excluir participante com registrações em eventos. Desative o participante em vez de excluí-lo.' 
+      return res.status(400).json({
+        error:
+          'Não é possível excluir participante com registrações em eventos. Desative o participante em vez de excluí-lo.',
       });
     }
 
     // Excluir o participante
-    const { error: deleteError } = await supabaseAdmin
-      .from('participants')
-      .delete()
-      .eq('id', id);
+    const { error: deleteError } = await supabaseAdmin.from('participants').delete().eq('id', id);
 
     if (deleteError) {
       console.error('Erro ao excluir participante:', deleteError);
@@ -391,7 +468,6 @@ async function handleDelete(req, res) {
     }
 
     return res.status(200).json({ message: 'Participante excluído com sucesso' });
-
   } catch (error) {
     console.error('Erro inesperado ao excluir participante:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -402,5 +478,5 @@ export default withApiAuth(handler, {
   GET: ['participants.view'],
   POST: ['participants.manage'],
   PUT: ['participants.manage'],
-  DELETE: ['participants.manage']
+  DELETE: ['participants.manage'],
 });

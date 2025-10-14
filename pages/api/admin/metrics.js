@@ -1,10 +1,5 @@
 import { withApiAuth } from '../../../utils/api-auth';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { getSupabaseAdmin } from '../../../lib/config/supabase';
 
 // Handler da rota de métricas
 async function metricsHandler(req, res) {
@@ -13,8 +8,9 @@ async function metricsHandler(req, res) {
   }
 
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     // Buscar dados reais do Supabase
-    
+
     // Total de eventos
     const { count: totalEvents } = await supabaseAdmin
       .from('events')
@@ -45,38 +41,44 @@ async function metricsHandler(req, res) {
     // Credenciamentos recentes (últimos 10)
     const { data: recentCheckIns } = await supabaseAdmin
       .from('check_ins')
-      .select(`
+      .select(
+        `
         id,
         data_check_in,
         registrations!inner(
           participants!inner(nome),
           events!inner(nome)
         )
-      `)
+      `
+      )
       .order('data_check_in', { ascending: false })
       .limit(10);
 
-    const recentCredentials = recentCheckIns?.map(checkIn => ({
-      id: checkIn.id,
-      name: checkIn.registrations.participants.nome,
-      event: checkIn.registrations.events.nome,
-      time: checkIn.data_check_in
-    })) || [];
+    const recentCredentials =
+      recentCheckIns?.map((checkIn) => ({
+        id: checkIn.id,
+        name: checkIn.registrations.participants.nome,
+        event: checkIn.registrations.events.nome,
+        time: checkIn.data_check_in,
+      })) || [];
 
     // Eventos com mais participantes
     const { data: eventsWithParticipants } = await supabaseAdmin
       .from('events')
-      .select(`
+      .select(
+        `
         nome,
         registrations(count)
-      `)
+      `
+      )
       .eq('ativo', true)
       .limit(5);
 
-    const eventsBreakdown = eventsWithParticipants?.map(event => ({
-      name: event.nome,
-      participants: event.registrations?.length || 0
-    })) || [];
+    const eventsBreakdown =
+      eventsWithParticipants?.map((event) => ({
+        name: event.nome,
+        participants: event.registrations?.length || 0,
+      })) || [];
 
     // Check-ins por hora (hoje)
     const { data: todayCheckIns } = await supabaseAdmin
@@ -86,7 +88,7 @@ async function metricsHandler(req, res) {
 
     // Agrupar por hora
     const hourlyCredentials = {};
-    todayCheckIns?.forEach(checkIn => {
+    todayCheckIns?.forEach((checkIn) => {
       const hour = new Date(checkIn.data_check_in).getHours();
       const hourKey = `${hour.toString().padStart(2, '0')}:00`;
       hourlyCredentials[hourKey] = (hourlyCredentials[hourKey] || 0) + 1;
@@ -94,7 +96,7 @@ async function metricsHandler(req, res) {
 
     const credentialingByHour = Object.entries(hourlyCredentials).map(([hour, count]) => ({
       hour,
-      count
+      count,
     }));
 
     const metrics = {
@@ -104,7 +106,7 @@ async function metricsHandler(req, res) {
       activeEvents: activeEvents || 0,
       recentCredentials,
       eventsBreakdown,
-      credentialingByHour
+      credentialingByHour,
     };
 
     return res.status(200).json(metrics);

@@ -1,13 +1,13 @@
 /**
  * EventReportPanel Component
- * 
+ *
  * Modal/panel displaying comprehensive event report with:
  * - Event details and metadata
  * - Statistics (total participants, check-ins, credentialing status)
  * - Charts (status distribution, timeline, categories)
  * - Participant list with filters
  * - Export options
- * 
+ *
  * @module components/admin/events/EventReportPanel
  * @example
  * ```tsx
@@ -19,7 +19,7 @@
  * ```
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart,
@@ -37,6 +37,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { StatsCard, ExportButton } from '../shared';
+import { formatCPF, normalizeCPF } from '@/lib/utils/cpf';
 
 export interface EventReportPanelProps {
   /** Event ID to load report for */
@@ -61,19 +62,27 @@ interface EventReport {
     codevento_sas?: string;
   };
   stats: {
-    total_participants: number;
-    credenciados: number;
-    nao_credenciados: number;
-    checked_in: number;
-    pending: number;
+    // Backend may return PT-BR keys; make all optional to be tolerant
+    total_participantes?: number;
+    total_participants?: number;
+    credenciados?: number;
+    pendentes?: number;
+    pending?: number;
+    cancelados?: number;
+    checked_in?: number;
+    taxa_credenciamento?: number;
+    taxa_presenca?: number;
   };
   participants: Array<{
     id: string;
     nome: string;
     cpf: string;
     email: string;
+    fonte?: string;
     status_credenciamento: string;
     checked_in_at: string | null;
+    in_sas?: boolean;
+    ui_status?: string;
   }>;
   charts: {
     statusDistribution: Array<{ name: string; value: number }>;
@@ -97,17 +106,43 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
   const [syncLoading, setSyncLoading] = useState(false);
 
   // Fetch event report
-  const { data: report, isLoading, error, refetch } = useQuery<EventReport>({
+  const {
+    data: report,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<EventReport>({
     queryKey: ['event-report', eventId],
     queryFn: async () => {
-      const response = await fetch(`/api/admin/events/${eventId}/report?includeParticipants=true&includeStats=true`);
+      const response = await fetch(
+        `/api/admin/events/${eventId}/report?includeParticipants=true&includeStats=true`
+      );
       if (!response.ok) {
-        throw new Error('Failed to fetch event report');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch event report');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data; // Extrair dados do campo 'data'
     },
     enabled: isOpen && !!eventId,
   });
+
+  // Compute safe stats mapping to avoid NaN in UI
+  const computedStats = useMemo(() => {
+    const s: any = report?.stats || {};
+    const total = Number(
+      s.total_participantes ??
+        s.total_participants ??
+        (Array.isArray(report?.participants) ? report.participants.length : 0)
+    );
+    const credenciados = Number(s.credenciados ?? s.credentialed ?? s.confirmed ?? 0);
+    const cancelados = Number(s.cancelados ?? s.cancelled ?? 0);
+    const checked_in = Number(s.checked_in ?? 0);
+    const pendentes = Number(
+      s.pendentes ?? s.pending ?? Math.max(total - credenciados - cancelados, 0)
+    );
+    return { total, credenciados, checked_in, pendentes };
+  }, [report]);
 
   const handleSync = async () => {
     if (!report?.event.codevento_sas) {
@@ -121,21 +156,25 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          codevento: report.event.codevento_sas,
+          codEvento: report.event.codevento_sas,
           overwrite: true,
           includeParticipants: true,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Erro ao sincronizar com SAS');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erro ao sincronizar com SAS');
       }
 
+      const result = await response.json();
       await refetch();
-      alert('Sincronização concluída com sucesso!');
-    } catch (err) {
+      alert(
+        `Sincronização concluída! ${result.message || 'Participantes sincronizados com sucesso.'}`
+      );
+    } catch (err: any) {
       console.error('Sync error:', err);
-      alert('Erro ao sincronizar com SAS');
+      alert(err.message || 'Erro ao sincronizar com SAS');
     } finally {
       setSyncLoading(false);
     }
@@ -170,6 +209,38 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
     } catch (err) {
       console.error('Export error:', err);
       alert('Erro ao exportar relatório');
+    }
+  };
+
+  // Verify in SAS and optionally resend to n8n
+  const handleVerifyInSAS = async (participantCpf: string) => {
+    try {
+      const res = await fetch(`/api/admin/events/${eventId}/sas-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: participantCpf }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.message || 'Falha ao verificar no SAS');
+
+      if (data.data.found) {
+        alert('Participante já consta no SAS.');
+        return;
+      }
+
+      if (confirm('Participante não encontrado no SAS. Deseja reenviar os dados para o n8n?')) {
+        const resend = await fetch(`/api/admin/events/${eventId}/sas-resend`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cpf: participantCpf }),
+        });
+        const resendData = await resend.json();
+        if (!resend.ok || !resendData?.success)
+          throw new Error(resendData?.message || 'Falha ao reenviar dados');
+        alert('Reenvio solicitado com sucesso.');
+      }
+    } catch (e: any) {
+      alert(e.message || 'Erro ao verificar/reenviar');
     }
   };
 
@@ -217,7 +288,7 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
             </div>
 
             {/* Actions */}
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex gap-2 relative">
               <ExportButton onExport={handleExport} />
               {showSyncButton && report?.event.codevento_sas && (
                 <button
@@ -228,17 +299,38 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
                   {syncLoading ? (
                     <>
                       <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
                       </svg>
                       Sincronizando...
                     </>
                   ) : (
                     <>
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
                       </svg>
-                      Sincronizar com SAS
+                      Puxar Participantes do SAS
                     </>
                   )}
                 </button>
@@ -298,25 +390,25 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <StatsCard
                           title="Total de Participantes"
-                          value={report.stats.total_participants}
+                          value={computedStats.total}
                           icon="users"
                           color="blue"
                         />
                         <StatsCard
                           title="Credenciados"
-                          value={report.stats.credenciados}
+                          value={computedStats.credenciados}
                           icon="check"
                           color="green"
                         />
                         <StatsCard
                           title="Check-ins Realizados"
-                          value={report.stats.checked_in}
+                          value={computedStats.checked_in}
                           icon="badge"
                           color="purple"
                         />
                         <StatsCard
                           title="Pendentes"
-                          value={report.stats.pending}
+                          value={computedStats.pendentes}
                           icon="clock"
                           color="yellow"
                         />
@@ -324,7 +416,9 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
 
                       {/* Event Details */}
                       <div className="bg-gray-50 rounded-lg p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Detalhes do Evento</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                          Detalhes do Evento
+                        </h3>
                         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <dt className="text-sm font-medium text-gray-500">Status</dt>
@@ -364,40 +458,99 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
                               Email
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Origem
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Status
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Check-in
                             </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Ações
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {report.participants.map((participant) => (
+                          {Array.from(
+                            new Map(
+                              report.participants.map((p) => [normalizeCPF(p.cpf), p])
+                            ).values()
+                          ).map((participant) => (
                             <tr key={participant.id} className="hover:bg-gray-50">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                 {participant.nome}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {participant.cpf}
+                                {formatCPF(participant.cpf)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {participant.email}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <span
-                                  className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    participant.status_credenciamento === 'credenciado'
-                                      ? 'bg-green-100 text-green-800'
-                                      : 'bg-yellow-100 text-yellow-800'
-                                  }`}
-                                >
-                                  {participant.status_credenciamento}
-                                </span>
+                                {participant.fonte === 'sas' ? (
+                                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                    SAS
+                                  </span>
+                                ) : (
+                                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                    Local
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {(() => {
+                                  const label =
+                                    participant.ui_status || participant.status_credenciamento;
+                                  let color = 'bg-yellow-100 text-yellow-800';
+                                  if (label === 'integrado') color = 'bg-green-100 text-green-800';
+                                  if (label === 'credenciado/Pendente de sincronização')
+                                    color = 'bg-orange-100 text-orange-800';
+                                  if (label === 'Pendente de Checkin')
+                                    color = 'bg-yellow-100 text-yellow-800';
+                                  if (label === 'cancelado' || label === 'cancelled')
+                                    color = 'bg-red-100 text-red-800';
+                                  return (
+                                    <span
+                                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${color}`}
+                                    >
+                                      {label === 'credentialed'
+                                        ? 'credenciado'
+                                        : label === 'pending'
+                                          ? 'pendente'
+                                          : label === 'cancelled'
+                                            ? 'cancelado'
+                                            : label}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {participant.checked_in_at
                                   ? new Date(participant.checked_in_at).toLocaleString('pt-BR')
                                   : '-'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                {(() => {
+                                  const label =
+                                    participant.ui_status || participant.status_credenciamento;
+                                  const isCred =
+                                    label === 'integrado' ||
+                                    label === 'credenciado' ||
+                                    label === 'credentialed' ||
+                                    label === 'credenciado/Pendente de sincronização';
+                                  const showButton = isCred && label !== 'integrado';
+                                  if (!showButton) return null;
+                                  return (
+                                    <button
+                                      className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                                      onClick={() => handleVerifyInSAS(participant.cpf)}
+                                      title="Verificar no SAS e reenviar se necessário"
+                                    >
+                                      Verificar SAS
+                                    </button>
+                                  );
+                                })()}
                               </td>
                             </tr>
                           ))}
@@ -435,7 +588,7 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
                       </div>
 
                       {/* Daily Check-ins */}
-                      {report.charts.dailyCheckIns.length > 0 && (
+                      {report.charts?.dailyCheckIns && report.charts.dailyCheckIns.length > 0 && (
                         <div>
                           <h3 className="text-lg font-semibold text-gray-900 mb-4">
                             Check-ins por Dia
@@ -447,30 +600,36 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
                               <YAxis />
                               <Tooltip />
                               <Legend />
-                              <Line type="monotone" dataKey="count" stroke="#0088FE" strokeWidth={2} />
+                              <Line
+                                type="monotone"
+                                dataKey="count"
+                                stroke="#0088FE"
+                                strokeWidth={2}
+                              />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
                       )}
 
                       {/* Category Breakdown */}
-                      {report.charts.categoryBreakdown.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                            Participantes por Categoria
-                          </h3>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={report.charts.categoryBreakdown}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="category" />
-                              <YAxis />
-                              <Tooltip />
-                              <Legend />
-                              <Bar dataKey="count" fill="#00C49F" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
+                      {report.charts?.categoryBreakdown &&
+                        report.charts.categoryBreakdown.length > 0 && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                              Participantes por Categoria
+                            </h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <BarChart data={report.charts.categoryBreakdown}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="category" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="count" fill="#00C49F" />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>

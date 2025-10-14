@@ -1,47 +1,25 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { Participant, ApiResponse } from '@/types';
+// DEPRECATED: This hook is not used in the current SAS credenciamento flow.
+// It referenced /api/process-credenciamento which has been discontinued.
+// Intentionally throws in development to reveal accidental usage.
 
-const searchParticipant = async (cpf: string): Promise<ApiResponse<Participant>> => {
-  const response = await fetch('/api/search-participant', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cpf }),
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Error: ${response.status}`);
+export const useParticipantSearch = () => {
+  if (process.env.NODE_ENV !== 'production') {
+    throw new Error(
+      'hooks/useParticipant.ts is deprecated. Use the SAS credenciamento flow UI + /api/webhook-checkin.'
+    );
   }
-  
-  return response.json();
-};
-
-export const useParticipantSearch = (cpf: string, enabled = false) => {
-  return useQuery({
-    queryKey: ['participant', cpf],
-    queryFn: () => searchParticipant(cpf),
-    enabled,
-    retry: (failureCount, error: any) => {
-      // Não repetir para 404
-      if (error?.response?.status === 404) return false;
-      return failureCount < 3;
-    },
-  });
+  return { data: null, isLoading: false, error: null } as any;
 };
 
 export const useParticipantCredential = () => {
-  return useMutation({
-    mutationFn: async (data: { participant: Participant; eventId: string }) => {
-      const response = await fetch('/api/process-credenciamento', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erro ao processar credenciamento');
-      }
-
-      return response.json();
+  if (process.env.NODE_ENV !== 'production') {
+    throw new Error(
+      'hooks/useParticipant.ts is deprecated. Use the SAS credenciamento flow UI + /api/webhook-checkin.'
+    );
+  }
+  return {
+    mutateAsync: async () => {
+      throw new Error('Deprecated');
     },
-  });
+  } as any;
 };

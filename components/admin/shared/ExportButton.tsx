@@ -1,9 +1,9 @@
 /**
  * ExportButton Component
- * 
+ *
  * Dropdown button for exporting data to Excel or PDF with anonymization option.
  * Provides a clean interface for selecting export format and privacy options.
- * 
+ *
  * @module components/admin/shared/ExportButton
  * @example
  * ```tsx
@@ -80,12 +80,13 @@ const ExportButton: React.FC<ExportButtonProps> = ({
   };
 
   const getButtonClasses = () => {
-    const base = 'relative inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
-    
+    const base =
+      'relative inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
+
     if (variant === 'primary') {
       return `${base} bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:bg-blue-300`;
     }
-    
+
     return `${base} bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400`;
   };
 
@@ -99,7 +100,7 @@ const ExportButton: React.FC<ExportButtonProps> = ({
         disabled={isDisabled}
         className={getButtonClasses()}
       >
-        {(loading || exporting) ? (
+        {loading || exporting ? (
           <>
             <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
               <circle
@@ -148,7 +149,7 @@ const ExportButton: React.FC<ExportButtonProps> = ({
 
       {/* Dropdown Menu */}
       {isOpen && !isDisabled && (
-        <div className="absolute right-0 mt-2 w-72 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+        <div className="absolute left-0 mt-2 w-72 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
           <div className="py-1" role="menu">
             {/* Anonymization Option */}
             {showAnonymizeOption && (
@@ -160,9 +161,7 @@ const ExportButton: React.FC<ExportButtonProps> = ({
                     onChange={(e) => setAnonymize(e.target.checked)}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  <span className="ml-2 text-sm text-gray-700">
-                    Anonimizar dados pessoais
-                  </span>
+                  <span className="ml-2 text-sm text-gray-700">Anonimizar dados pessoais</span>
                 </label>
                 <p className="mt-1 text-xs text-gray-500">
                   Remove CPF, email e telefone dos dados exportados
@@ -188,9 +187,7 @@ const ExportButton: React.FC<ExportButtonProps> = ({
                 </div>
                 <div>
                   <div className="font-medium">Exportar para Excel</div>
-                  <div className="text-xs text-gray-500">
-                    Planilha com todos os dados (.xlsx)
-                  </div>
+                  <div className="text-xs text-gray-500">Planilha com todos os dados (.xlsx)</div>
                 </div>
               </button>
 
@@ -220,11 +217,7 @@ const ExportButton: React.FC<ExportButtonProps> = ({
             {/* Info */}
             <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
               <p className="text-xs text-gray-600">
-                <svg
-                  className="inline h-3 w-3 mr-1"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
+                <svg className="inline h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fillRule="evenodd"
                     d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
