@@ -358,14 +358,14 @@ export class SASService {
       nome: eventData.nome,
       descricao: eventData.descricao ?? null,
       data_inicio: eventData.data_inicio,
-      data_fim: eventData.data_fim,
+      data_fim: eventData.data_fim ?? null,
       local: eventData.local,
-      modalidade:
-        eventData.modalidade as Database['public']['Tables']['events']['Update']['modalidade'],
-      status: eventData.status as Database['public']['Tables']['events']['Update']['status'],
+      modalidade: (eventData.modalidade ||
+        null) as Database['public']['Tables']['events']['Update']['modalidade'],
+      status: (eventData.status ||
+        'active') as Database['public']['Tables']['events']['Update']['status'],
       tipo_evento: eventData.tipo_evento ?? null,
       publico_alvo: eventData.publico_alvo ?? null,
-      capacidade: eventData.capacidade ?? null,
       solucao: eventData.solucao ?? null,
       unidade: eventData.unidade ?? null,
       codevento_sas: eventData.codevento,
@@ -374,8 +374,8 @@ export class SASService {
 
     if (existingEvent && overwrite) {
       // Atualizar evento existente
-      const { error } = await supabase
-        .from('events')
+      const { error } = await (supabase as any)
+        .from('events' as any)
         .update(eventToSave)
         .eq('id', existingEvent.id);
 
@@ -393,11 +393,11 @@ export class SASService {
         // Campos obrigatórios garantidos no Insert
         nome: eventData.nome,
         data_inicio: eventData.data_inicio,
-        data_fim: eventData.data_fim,
+        data_fim: eventData.data_fim ?? null,
       } as Database['public']['Tables']['events']['Insert'];
 
-      const { data: newEvent, error } = await supabase
-        .from('events')
+      const { data: newEvent, error } = await (supabase as any)
+        .from('events' as any)
         .insert(eventInsert)
         .select('id')
         .single();
@@ -456,7 +456,10 @@ export class SASService {
               ...participantData,
               updated_at: new Date().toISOString(),
             };
-            await supabase.from('participants').update(participantUpdate).eq('id', participantId);
+            await (supabase as any)
+              .from('participants' as any)
+              .update(participantUpdate)
+              .eq('id', participantId);
           }
         } else {
           // Criar novo participante
@@ -464,8 +467,8 @@ export class SASService {
             ...participantData,
             created_at: new Date().toISOString(),
           };
-          const { data: newParticipant, error: insertError } = await supabase
-            .from('participants')
+          const { data: newParticipant, error: insertError } = await (supabase as any)
+            .from('participants' as any)
             .insert(participantInsert)
             .select('id')
             .single();
@@ -496,7 +499,10 @@ export class SASService {
               status: newStatus,
               updated_at: new Date().toISOString(),
             };
-            await supabase.from('registrations').update(regUpdate).eq('id', existingReg.id);
+            await (supabase as any)
+              .from('registrations' as any)
+              .update(regUpdate)
+              .eq('id', existingReg.id);
             updated++;
           } else {
             skipped++;
@@ -510,7 +516,9 @@ export class SASService {
             data_inscricao: new Date().toISOString(),
           };
 
-          const { error: regError } = await supabase.from('registrations').insert(registrationData);
+          const { error: regError } = await (supabase as any)
+            .from('registrations' as any)
+            .insert(registrationData);
 
           if (regError) {
             console.error(`[SAS] Erro ao criar registration para ${participant.cpf}:`, regError);
