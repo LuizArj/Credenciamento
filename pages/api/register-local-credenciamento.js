@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normalizeCPF } from '@/lib/utils/cpf';
+import { getCurrentDateTimeGMT4 } from '@/lib/utils/timezone';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -73,7 +74,7 @@ export default async function handler(req, res) {
           email: participant.email,
           telefone: participant.phone,
           fonte: participant.source || 'sas',
-          updated_at: new Date().toISOString(),
+          updated_at: getCurrentDateTimeGMT4(),
         })
         .eq('id', existingParticipant.id)
         .select()
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
       if (localRegistration.status !== 'confirmed') {
         const { data: updatedReg } = await supabaseAdmin
           .from('registrations')
-          .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+          .update({ status: 'confirmed', updated_at: getCurrentDateTimeGMT4() })
           .eq('id', localRegistration.id)
           .select()
           .single();
@@ -143,7 +144,7 @@ export default async function handler(req, res) {
       const registrationData = {
         event_id: localEvent.id,
         participant_id: localParticipant.id,
-        data_inscricao: new Date().toISOString(),
+        data_inscricao: getCurrentDateTimeGMT4(),
         // Ao credenciar pelo sistema, confirmar a inscrição; presença será registrada em check_ins
         status: 'confirmed',
         forma_pagamento: 'sas',
@@ -177,10 +178,10 @@ export default async function handler(req, res) {
       .single();
 
     if (!existingCheckIn) {
-      // Criar check-in
+      // Criar check-in com horário GMT-4
       const checkInData = {
         registration_id: localRegistration.id,
-        data_check_in: new Date().toISOString(),
+        data_check_in: getCurrentDateTimeGMT4(),
         responsavel_credenciamento: attendantName || 'Sistema SAS',
         observacoes: `Check-in realizado automaticamente via sistema SAS`,
       };

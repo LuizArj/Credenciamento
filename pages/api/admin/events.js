@@ -25,10 +25,27 @@ async function handler(req, res) {
 // ===== GET - Buscar eventos =====
 async function handleGet(req, res) {
   try {
-    const { status, search, page = 1, limit = 10 } = req.query;
+    const {
+      status,
+      search,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 10,
+      sortBy = 'data_inicio',
+      sortOrder = 'desc',
+    } = req.query;
 
-    // Primeiro, buscar apenas os eventos
-    let query = supabaseAdmin.from('events').select('*').order('data_inicio', { ascending: false });
+    // Validar sortBy
+    const validSortFields = ['nome', 'data_inicio', 'local', 'modalidade', 'tipo_evento'];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'data_inicio';
+    const ascending = sortOrder === 'asc';
+
+    // Primeiro, buscar apenas os eventos com contagem total
+    let query = supabaseAdmin
+      .from('events')
+      .select('*', { count: 'exact' })
+      .order(sortField, { ascending });
 
     // Filtros
     if (status && status !== 'all') {
@@ -36,7 +53,18 @@ async function handleGet(req, res) {
     }
 
     if (search) {
-      query = query.or(`nome.ilike.%${search}%, local.ilike.%${search}%`);
+      query = query.or(
+        `nome.ilike.%${search}%, local.ilike.%${search}%, codevento_sas.ilike.%${search}%`
+      );
+    }
+
+    // Filtro de data
+    if (dateFrom) {
+      query = query.gte('data_inicio', dateFrom);
+    }
+
+    if (dateTo) {
+      query = query.lte('data_inicio', dateTo);
     }
 
     // Paginação
@@ -54,11 +82,9 @@ async function handleGet(req, res) {
     if (!events || events.length === 0) {
       return res.status(200).json({
         events: [],
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: 0,
-        },
+        total: 0,
+        page: parseInt(page),
+        limit: parseInt(limit),
       });
     }
 
@@ -102,11 +128,9 @@ async function handleGet(req, res) {
 
     return res.status(200).json({
       events: eventsWithStats,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count || 0,
-      },
+      total: count || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
     });
   } catch (error) {
     console.error('Erro inesperado ao buscar eventos:', error);

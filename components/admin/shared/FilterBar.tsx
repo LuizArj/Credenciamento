@@ -1,9 +1,9 @@
 /**
  * FilterBar Component
- * 
+ *
  * Reusable search and filter component for admin pages.
  * Provides search input, date range filters, status filters, and action buttons.
- * 
+ *
  * @module components/admin/shared/FilterBar
  * @example
  * ```tsx
@@ -91,6 +91,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
   });
 
   const [searchValue, setSearchValue] = useState(filters.search);
+  const [tempDateFrom, setTempDateFrom] = useState(filters.dateFrom);
+  const [tempDateTo, setTempDateTo] = useState(filters.dateTo);
 
   // Debounced search
   useEffect(() => {
@@ -119,6 +121,15 @@ const FilterBar: React.FC<FilterBarProps> = ({
     [filters, onSearch, onFilterChange]
   );
 
+  // Handler para aplicar filtros de data
+  const handleApplyDateFilters = () => {
+    const newFilters = { ...filters, dateFrom: tempDateFrom, dateTo: tempDateTo };
+    setFilters(newFilters);
+    if (onFilterChange) {
+      onFilterChange(newFilters);
+    }
+  };
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchValue(e.target.value);
   };
@@ -132,6 +143,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
     };
     setFilters(clearedFilters);
     setSearchValue('');
+    setTempDateFrom('');
+    setTempDateTo('');
     if (onSearch) onSearch('');
     if (onFilterChange) onFilterChange(clearedFilters);
   };
@@ -156,7 +169,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
   };
 
   const getButtonClasses = (variant?: string) => {
-    const base = 'px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
+    const base =
+      'px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
     switch (variant) {
       case 'primary':
         return `${base} bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:bg-blue-300`;
@@ -223,26 +237,30 @@ const FilterBar: React.FC<FilterBarProps> = ({
       {showDateFilters && (
         <div className="flex flex-col sm:flex-row gap-4 mb-4">
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Data Início
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data Início</label>
             <input
               type="date"
-              value={filters.dateFrom}
-              onChange={(e) => handleFilterUpdate('dateFrom', e.target.value)}
+              value={tempDateFrom}
+              onChange={(e) => setTempDateFrom(e.target.value)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             />
           </div>
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Data Fim
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data Fim</label>
             <input
               type="date"
-              value={filters.dateTo}
-              onChange={(e) => handleFilterUpdate('dateTo', e.target.value)}
+              value={tempDateTo}
+              onChange={(e) => setTempDateTo(e.target.value)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             />
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={handleApplyDateFilters}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 whitespace-nowrap"
+            >
+              Pesquisar
+            </button>
           </div>
         </div>
       )}
@@ -275,11 +293,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 className={`${getButtonClasses(action.variant)} flex items-center gap-2`}
               >
                 {action.loading ? (
-                  <svg
-                    className="animate-spin h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                     <circle
                       className="opacity-25"
                       cx="12"
@@ -296,12 +310,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                   </svg>
                 ) : (
                   action.icon && (
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"

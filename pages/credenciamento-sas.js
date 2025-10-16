@@ -6,6 +6,7 @@ import {
   formatPhone,
   unformatPhone,
 } from '../utils/validators';
+import { getCurrentDateTimeGMT4 } from '../lib/utils/timezone';
 
 import { useSession } from 'next-auth/react';
 
@@ -907,7 +908,7 @@ export default function CredenciamentoSAS() {
             }
           : null,
         companyRelation: formData.vinculo || null,
-        registrationTimestamp: new Date().toISOString(),
+        registrationTimestamp: getCurrentDateTimeGMT4(), // Usar GMT-4 (Amazonas)
       };
 
       // 3) Mostrar sucesso imediatamente e disparar processos em background

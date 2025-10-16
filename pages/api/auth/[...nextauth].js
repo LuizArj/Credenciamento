@@ -1,7 +1,5 @@
 import NextAuth from 'next-auth';
 import KeycloakProvider from 'next-auth/providers/keycloak';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import { authenticateLocalUser } from '../../../utils/user-management.ts';
 import https from 'https';
 
 // Desabilitar verificação SSL em desenvolvimento
@@ -39,44 +37,6 @@ export const authOptions = {
         agent: new https.Agent({
           rejectUnauthorized: false,
         }),
-      },
-    }),
-    CredentialsProvider({
-      name: 'Credenciais Locais',
-      credentials: {
-        username: { label: 'Username', type: 'text' },
-        password: { label: 'Senha', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
-          throw new Error('Usuário e senha são obrigatórios');
-        }
-
-        const result = await authenticateLocalUser(credentials.username, credentials.password);
-
-        if (result.error) {
-          // Propagar mensagem real de erro para facilitar diagnóstico
-          throw new Error(
-            typeof result.error === 'string'
-              ? result.error
-              : result.error?.message || 'Erro na autenticação'
-          );
-        }
-
-        if (!result.data || !result.data.user) {
-          throw new Error('Usuário não encontrado');
-        }
-
-        const { user } = result.data;
-
-        // Garantindo que todos os campos são strings ou booleanos
-        return {
-          id: String(user.id),
-          name: String(user.name),
-          email: String(user.email),
-          roles: user.roles || [],
-          isLocalUser: true,
-        };
       },
     }),
   ],
@@ -156,15 +116,10 @@ export const authOptions = {
         } catch (error) {
           console.error('NextAuth: Erro no auto-registro do Keycloak:', error);
         }
-      } else if (user?.isLocalUser || (account && account.provider === 'credentials')) {
-        // Usuário Local
-        token.isLocalUser = true;
-        token.name = user.name;
-        // Se não houver email cadastrado, reutiliza o username (name) apenas para fins de identificação nos logs / session
-        token.email = user.email || user.name || null;
-        token.roles = user.roles || [];
-      } else if (!token.roles || token.roles.length === 0) {
-        // Se não temos roles, vamos buscar do banco
+      }
+
+      // Se não temos roles, vamos buscar do banco
+      if (!token.roles || token.roles.length === 0) {
         try {
           const { createClient } = await import('@supabase/supabase-js');
           const supabaseAdmin = createClient(

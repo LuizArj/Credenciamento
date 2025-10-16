@@ -1,3 +1,5 @@
+import { getCurrentDateTimeGMT4 } from '@/lib/utils/timezone';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
@@ -6,7 +8,7 @@ export default async function handler(req, res) {
   try {
     const webhookData = {
       ...req.body,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentDateTimeGMT4(), // Usar GMT-4 ao invés de UTC
       platform: 'credenciamento-sas',
     };
 
