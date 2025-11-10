@@ -215,35 +215,86 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
     }
   };
 
-  // Verify in SAS and optionally resend to n8n
+  // Verify in SAS and optionally resend
   const handleVerifyInSAS = async (participantCpf: string) => {
     try {
-      const res = await fetch(`/api/admin/events/${eventId}/sas-verify`, {
+      console.log('[EventReport] Verifying participant in SAS:', participantCpf);
+
+      const res = await fetch(`/api/admin/events/${eventId}/verify-sas-participant`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cpf: participantCpf }),
+        body: JSON.stringify({ cpf: participantCpf, forceResend: false }),
       });
-      const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.message || 'Falha ao verificar no SAS');
 
-      if (data.data.found) {
-        alert('Participante já consta no SAS.');
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.message || 'Falha ao verificar participante no SAS');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.message || 'Resposta inválida da API');
+      }
+
+      // Participante já existe no SAS
+      if (data.data.existsInSAS && !data.data.wasSent) {
+        alert(
+          `✅ Participante já está registrado no SAS!\n\n` +
+            `Nome: ${data.data.participant.nome}\n` +
+            `CPF: ${data.data.participant.cpf}`
+        );
         return;
       }
 
-      if (confirm('Participante não encontrado no SAS. Deseja reenviar os dados para o n8n?')) {
-        const resend = await fetch(`/api/admin/events/${eventId}/sas-resend`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cpf: participantCpf }),
-        });
-        const resendData = await resend.json();
-        if (!resend.ok || !resendData?.success)
-          throw new Error(resendData?.message || 'Falha ao reenviar dados');
-        alert('Reenvio solicitado com sucesso.');
+      // Participante foi enviado para o SAS
+      if (data.data.wasSent) {
+        alert(
+          `✅ Participante enviado para o SAS com sucesso!\n\n` +
+            `Nome: ${data.data.participant.nome}\n` +
+            `CPF: ${data.data.participant.cpf}`
+        );
+        // Refetch para atualizar dados
+        await refetch();
+        return;
       }
     } catch (e: any) {
-      alert(e.message || 'Erro ao verificar/reenviar');
+      console.error('[EventReport] Error verifying participant:', e);
+
+      // Se o participante não existe, perguntar se deseja reenviar
+      if (e.message?.includes('not found')) {
+        const shouldResend = confirm(
+          `⚠️ Participante não encontrado no SAS.\n\n` +
+            `Deseja enviar os dados deste participante para o SAS?`
+        );
+
+        if (shouldResend) {
+          try {
+            const resendRes = await fetch(`/api/admin/events/${eventId}/verify-sas-participant`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cpf: participantCpf, forceResend: true }),
+            });
+
+            const resendData = await resendRes.json();
+
+            if (!resendRes.ok || !resendData?.success) {
+              throw new Error(resendData?.message || 'Falha ao enviar participante');
+            }
+
+            alert(
+              `✅ Participante enviado para o SAS com sucesso!\n\n` +
+                `Nome: ${resendData.data.participant.nome}\n` +
+                `CPF: ${resendData.data.participant.cpf}`
+            );
+
+            await refetch();
+          } catch (resendError: any) {
+            alert(`❌ Erro ao enviar participante:\n${resendError.message || 'Erro desconhecido'}`);
+          }
+        }
+      } else {
+        alert(`❌ Erro ao verificar participante:\n${e.message || 'Erro desconhecido'}`);
+      }
     }
   };
 
