@@ -1,103 +1,72 @@
 import { withApiAuth } from '../../../utils/api-auth';
-import { getSupabaseAdmin } from '../../../lib/config/supabase';
+import { query } from '../../../lib/config/database';
 
 // Handler da rota de métricas
 async function metricsHandler(req, res) {
+  console.log(`[API] /api/admin/metrics ${req.method} - query=${JSON.stringify(req.query)} body=${req.method==='GET'? '{}': JSON.stringify(req.body ? req.body : {})}`);
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    // Buscar dados reais do Supabase
-
+    try {
     // Total de eventos
-    const { count: totalEvents } = await supabaseAdmin
-      .from('events')
-      .select('*', { count: 'exact', head: true })
-      .eq('ativo', true);
+    const totalEventsRes = await query('SELECT COUNT(*)::int AS count FROM events WHERE ativo = true');
+    const totalEvents = totalEventsRes.rows[0]?.count || 0;
 
     // Total de participantes
-    const { count: totalParticipants } = await supabaseAdmin
-      .from('participants')
-      .select('*', { count: 'exact', head: true })
-      .eq('ativo', true);
+    const totalParticipantsRes = await query('SELECT COUNT(*)::int AS count FROM participants WHERE ativo = true');
+    const totalParticipants = totalParticipantsRes.rows[0]?.count || 0;
 
     // Eventos ativos
-    const { count: activeEvents } = await supabaseAdmin
-      .from('events')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active')
-      .eq('ativo', true);
+    const activeEventsRes = await query("SELECT COUNT(*)::int AS count FROM events WHERE status = $1 AND ativo = true", ['active']);
+    const activeEvents = activeEventsRes.rows[0]?.count || 0;
 
     // Check-ins de hoje
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const { count: participantsToday } = await supabaseAdmin
-      .from('check_ins')
-      .select('*', { count: 'exact', head: true })
-      .gte('data_check_in', today.toISOString());
+    const participantsTodayRes = await query('SELECT COUNT(*)::int AS count FROM check_ins WHERE data_check_in >= $1', [today.toISOString()]);
+    const participantsToday = participantsTodayRes.rows[0]?.count || 0;
 
     // Credenciamentos recentes (últimos 10)
-    const { data: recentCheckIns } = await supabaseAdmin
-      .from('check_ins')
-      .select(
-        `
-        id,
-        data_check_in,
-        registrations!inner(
-          participants!inner(nome),
-          events!inner(nome)
-        )
-      `
-      )
-      .order('data_check_in', { ascending: false })
-      .limit(10);
+    const recentRes = await query(`
+      SELECT ci.id, ci.data_check_in, p.nome AS participant_name, e.nome AS event_name
+      FROM check_ins ci
+      JOIN registrations r ON ci.registration_id = r.id
+      JOIN participants p ON r.participant_id = p.id
+      JOIN events e ON r.event_id = e.id
+      ORDER BY ci.data_check_in DESC
+      LIMIT 10
+    `);
+    const recentCredentials = (recentRes.rows || []).map((ci) => ({
+      id: ci.id,
+      name: ci.participant_name,
+      event: ci.event_name,
+      time: ci.data_check_in,
+    }));
 
-    const recentCredentials =
-      recentCheckIns?.map((checkIn) => ({
-        id: checkIn.id,
-        name: checkIn.registrations.participants.nome,
-        event: checkIn.registrations.events.nome,
-        time: checkIn.data_check_in,
-      })) || [];
-
-    // Eventos com mais participantes
-    const { data: eventsWithParticipants } = await supabaseAdmin
-      .from('events')
-      .select(
-        `
-        nome,
-        registrations(count)
-      `
-      )
-      .eq('ativo', true)
-      .limit(5);
-
-    const eventsBreakdown =
-      eventsWithParticipants?.map((event) => ({
-        name: event.nome,
-        participants: event.registrations?.length || 0,
-      })) || [];
+    // Eventos com mais participantes (top 5)
+    const eventsWithParticipantsRes = await query(`
+      SELECT e.nome, COALESCE((SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id),0)::int AS registrations_count
+      FROM events e
+      WHERE e.ativo = true
+      ORDER BY registrations_count DESC
+      LIMIT 5
+    `);
+    const eventsBreakdown = (eventsWithParticipantsRes.rows || []).map((ev) => ({ name: ev.nome, participants: ev.registrations_count || 0 }));
 
     // Check-ins por hora (hoje)
-    const { data: todayCheckIns } = await supabaseAdmin
-      .from('check_ins')
-      .select('data_check_in')
-      .gte('data_check_in', today.toISOString());
+    const todayCheckInsRes = await query('SELECT data_check_in FROM check_ins WHERE data_check_in >= $1', [today.toISOString()]);
+    const todayCheckIns = todayCheckInsRes.rows || [];
 
     // Agrupar por hora
     const hourlyCredentials = {};
-    todayCheckIns?.forEach((checkIn) => {
+    todayCheckIns.forEach((checkIn) => {
       const hour = new Date(checkIn.data_check_in).getHours();
       const hourKey = `${hour.toString().padStart(2, '0')}:00`;
       hourlyCredentials[hourKey] = (hourlyCredentials[hourKey] || 0) + 1;
     });
 
-    const credentialingByHour = Object.entries(hourlyCredentials).map(([hour, count]) => ({
-      hour,
-      count,
-    }));
+    const credentialingByHour = Object.entries(hourlyCredentials).map(([hour, count]) => ({ hour, count }));
 
     const metrics = {
       totalEvents: totalEvents || 0,

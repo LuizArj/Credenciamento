@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '@/lib/config/supabase';
+import { query } from '@/lib/config/database';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -6,8 +6,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { eventDetails } = req.body;
+  const { eventDetails } = req.body;
 
     if (!eventDetails || !eventDetails.id) {
       return res.status(400).json({
@@ -18,59 +17,35 @@ export default async function handler(req, res) {
 
     const codEventoSAS = String(eventDetails.id);
 
-    // 1. Verificar se o evento já existe no banco local pelo CODEVENTO_SAS
-    const { data: existingEvent, error: searchError } = await supabaseAdmin
-      .from('events')
-      .select('*')
-      .eq('codevento_sas', codEventoSAS)
-      .single();
-
-    if (searchError && searchError.code !== 'PGRST116') {
-      // PGRST116 = not found
-      console.error('Erro ao buscar evento existente:', searchError);
-      return res.status(500).json({
-        message: 'Erro ao verificar evento existente',
-        error: searchError.message,
-      });
-    }
+  // Minimal logging: indicate sync start
+  console.log(`Sincronizando evento SAS: ${eventDetails?.id}`);
+  // 1. Verificar se o evento já existe no banco local pelo CODEVENTO_SAS
+    const { rows: existingRows } = await query('SELECT * FROM events WHERE codevento_sas = $1 LIMIT 1', [codEventoSAS]);
+    const existingEvent = existingRows[0] || null;
 
     let localEvent;
 
     if (existingEvent) {
-      // 2. Evento já existe - atualizar dados se necessário
-      console.log(`Evento SAS ${codEventoSAS} já existe no banco local com ID ${existingEvent.id}`);
+  // 2. Evento já existe - atualizar dados se necessário
 
-      const { data: updatedEvent, error: updateError } = await supabaseAdmin
-        .from('events')
-        .update({
-          nome: eventDetails.nome || existingEvent.nome,
-          data_inicio: eventDetails.dataEvento
-            ? new Date(eventDetails.dataEvento).toISOString()
-            : existingEvent.data_inicio,
-          data_fim: eventDetails.dataEvento
-            ? new Date(eventDetails.dataEvento).toISOString()
-            : existingEvent.data_fim,
-          status: 'active',
-          tipo_evento: 'evento_sas',
-          modalidade: 'presencial',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingEvent.id)
-        .select()
-        .single();
+      const { rows: updatedRows } = await query(
+        `UPDATE events SET nome=$1, data_inicio=$2, data_fim=$3, status=$4, tipo_evento=$5, modalidade=$6, updated_at=$7 WHERE id=$8 RETURNING *`,
+        [
+          eventDetails.nome || existingEvent.nome,
+          eventDetails.dataEvento ? new Date(eventDetails.dataEvento).toISOString() : existingEvent.data_inicio,
+          eventDetails.dataEvento ? new Date(eventDetails.dataEvento).toISOString() : existingEvent.data_fim,
+          'active',
+          'evento_sas',
+          'presencial',
+          new Date().toISOString(),
+          existingEvent.id,
+        ]
+      );
 
-      if (updateError) {
-        console.error('Erro ao atualizar evento:', updateError);
-        return res.status(500).json({
-          message: 'Erro ao atualizar evento existente',
-          error: updateError.message,
-        });
-      }
-
-      localEvent = updatedEvent;
+      localEvent = updatedRows[0];
     } else {
       // 3. Evento não existe - criar novo
-      console.log(`Criando novo evento SAS ${codEventoSAS} no banco local`);
+      // creating new local event
 
       const eventData = {
         codevento_sas: codEventoSAS,
@@ -96,22 +71,33 @@ export default async function handler(req, res) {
         ativo: true,
       };
 
-      const { data: newEvent, error: createError } = await supabaseAdmin
-        .from('events')
-        .insert(eventData)
-        .select()
-        .single();
+      const { rows: newRows } = await query(
+        `INSERT INTO events (codevento_sas,nome,descricao,data_inicio,data_fim,local,capacidade,modalidade,tipo_evento,publico_alvo,status,solucao,unidade,tipo_acao,meta_participantes,observacoes,ativo,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        [
+          eventData.codevento_sas,
+          eventData.nome,
+          eventData.descricao,
+          eventData.data_inicio,
+          eventData.data_fim,
+          eventData.local,
+          eventData.capacidade,
+          eventData.modalidade,
+          eventData.tipo_evento,
+          eventData.publico_alvo,
+          eventData.status,
+          eventData.solucao,
+          eventData.unidade,
+          eventData.tipo_acao,
+          eventData.meta_participantes,
+          eventData.observacoes,
+          eventData.ativo,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        ]
+      );
 
-      if (createError) {
-        console.error('Erro ao criar evento:', createError);
-        return res.status(500).json({
-          message: 'Erro ao criar novo evento',
-          error: createError.message,
-        });
-      }
-
-      localEvent = newEvent;
-      console.log(`Evento SAS ${codEventoSAS} criado com sucesso. ID local: ${newEvent.id}`);
+      localEvent = newRows[0];
+      console.log(`Evento sincronizado com ID: ${localEvent.id}`);
     }
 
     return res.status(200).json({

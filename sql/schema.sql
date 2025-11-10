@@ -135,21 +135,6 @@ CREATE TRIGGER update_participants_updated_at BEFORE UPDATE ON participants FOR 
 CREATE TRIGGER update_ticket_categories_updated_at BEFORE UPDATE ON ticket_categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_registrations_updated_at BEFORE UPDATE ON registrations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 9. Configurar RLS (Row Level Security) básico
-ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE participants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ticket_categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE registrations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE check_ins ENABLE ROW LEVEL SECURITY;
-
--- 10. Políticas básicas (permitir tudo para usuários autenticados por enquanto)
-CREATE POLICY "Permitir tudo para usuários autenticados" ON companies FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Permitir tudo para usuários autenticados" ON events FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Permitir tudo para usuários autenticados" ON participants FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Permitir tudo para usuários autenticados" ON ticket_categories FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Permitir tudo para usuários autenticados" ON registrations FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Permitir tudo para usuários autenticados" ON check_ins FOR ALL USING (auth.role() = 'authenticated');
 
 -- Verificar se tudo foi criado
 SELECT 

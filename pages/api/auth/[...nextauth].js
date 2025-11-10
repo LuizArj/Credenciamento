@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import KeycloakProvider from 'next-auth/providers/keycloak';
 import https from 'https';
+import { query, withTransaction, setSessionVariables } from '../../../lib/config/database';
 
 // Desabilitar verificação SSL em desenvolvimento
 if (process.env.NODE_ENV === 'development') {
@@ -56,125 +57,90 @@ export const authOptions = {
 
         // Auto-registro do usuário do Keycloak no sistema de permissões
         try {
-          const { createClient } = await import('@supabase/supabase-js');
-          const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_KEY
+          // Verificar se usuário já existe por username ou keycloak_id
+          const existingRes = await query(
+            'SELECT id, keycloak_id FROM credenciamento_admin_users WHERE username = $1 OR keycloak_id = $2 LIMIT 1',
+            [token.email, token.sub]
           );
-
-          // Verificar se usuário já existe
-          const { data: existingUser, error: checkError } = await supabaseAdmin
-            .from('credenciamento_admin_users')
-            .select('id, keycloak_id')
-            .or(`username.eq.${token.email},keycloak_id.eq.${token.sub}`)
-            .single();
+          const existingUser = existingRes.rows[0];
 
           if (!existingUser) {
-            // Registrar novo usuário do Keycloak
             console.log('NextAuth: Registrando novo usuário do Keycloak:', token.email);
-            const { data: newUser, error: insertError } = await supabaseAdmin
-              .from('credenciamento_admin_users')
-              .insert({
-                username: token.email,
-                email: token.email,
-                keycloak_id: token.sub,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .select('id')
-              .single();
+            // Inserir usuário e atribuir role manager em transação
+            const created = await withTransaction(async (client) => {
+              const insertRes = await client.query(
+                `INSERT INTO credenciamento_admin_users (username, email, keycloak_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+                [token.email, token.email, token.sub, new Date().toISOString(), new Date().toISOString()]
+              );
+              const newUser = insertRes.rows[0];
 
-            if (!insertError && newUser) {
-              // Atribuir role 'operator' por padrão para novos usuários
-              const { data: operatorRole } = await supabaseAdmin
-                .from('credenciamento_admin_roles')
-                .select('id')
-                .eq('name', 'operator')
-                .single();
+              // Encontrar role 'manager'
+              const roleRes = await client.query(`SELECT id FROM credenciamento_admin_roles WHERE name = $1 LIMIT 1`, ['manager']);
+              const managerRole = roleRes.rows[0];
 
-              if (operatorRole) {
-                await supabaseAdmin.from('credenciamento_admin_user_roles').insert({
-                  user_id: newUser.id,
-                  role_id: operatorRole.id,
-                  created_at: new Date().toISOString(),
-                });
-
-                token.roles = ['operator'];
-                console.log('NextAuth: Role operator atribuída ao novo usuário');
+              if (managerRole) {
+                await client.query(
+                  `INSERT INTO credenciamento_admin_user_roles (user_id, role_id, created_at) VALUES ($1,$2,$3)`,
+                  [newUser.id, managerRole.id, new Date().toISOString()]
+                );
+                return { id: newUser.id, managerAssigned: true };
               }
+
+              return { id: newUser.id, managerAssigned: false };
+            });
+
+            if (created && created.managerAssigned) {
+              token.roles = ['manager'];
+              console.log('NextAuth: Role manager atribuída ao novo usuário');
             }
           } else if (existingUser && !existingUser.keycloak_id) {
             // Atualizar usuário existente com keycloak_id
-            await supabaseAdmin
-              .from('credenciamento_admin_users')
-              .update({
-                keycloak_id: token.sub,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingUser.id);
+            await query(
+              `UPDATE credenciamento_admin_users SET keycloak_id = $1, updated_at = $2 WHERE id = $3`,
+              [token.sub, new Date().toISOString(), existingUser.id]
+            );
+              // TEMP LOG: updated existing user with keycloak_id
+              console.log('NextAuth(TEMP): updated existing user', { id: existingUser.id, keycloak_id: token.sub });
           }
         } catch (error) {
           console.error('NextAuth: Erro no auto-registro do Keycloak:', error);
         }
       }
 
-      // Se não temos roles, vamos buscar do banco
+      // Buscar roles do banco de dados
       if (!token.roles || token.roles.length === 0) {
         try {
-          const { createClient } = await import('@supabase/supabase-js');
-          const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_KEY
-          );
+          let roles = [];
 
-          let userData = null;
+          // Usar transação para buscar roles
+          await withTransaction(async (client) => {
+            // Marcar conexão como autenticada para RLS
+            await setSessionVariables(client, { 'myapp.user_role': 'authenticated' });
 
-          // Buscar por keycloak_id primeiro, depois por username/email
-          if (token.sub) {
-            const { data: kcUser } = await supabaseAdmin
-              .from('credenciamento_admin_users')
-              .select(
-                `
-                *,
-                roles:credenciamento_admin_user_roles(
-                  role:credenciamento_admin_roles(
-                    name
-                  )
-                )
-              `
-              )
-              .eq('keycloak_id', token.sub)
-              .single();
+            // Tentar buscar por keycloak_id
+            if (token.sub) {
+              const r = await client.query(
+                `SELECT rr.name FROM credenciamento_admin_user_roles ur 
+                 JOIN credenciamento_admin_roles rr ON ur.role_id = rr.id 
+                 WHERE ur.user_id = (SELECT id FROM credenciamento_admin_users WHERE keycloak_id = $1 LIMIT 1)`,
+                [token.sub]
+              );
+              roles = (r.rows || []).map((row) => row.name);
+            }
 
-            userData = kcUser;
-          }
+            // Se não encontrou por keycloak_id, tentar por username/email
+            if ((!roles || roles.length === 0) && token.email) {
+              const r2 = await client.query(
+                `SELECT rr.name FROM credenciamento_admin_user_roles ur 
+                 JOIN credenciamento_admin_roles rr ON ur.role_id = rr.id 
+                 WHERE ur.user_id = (SELECT id FROM credenciamento_admin_users WHERE username = $1 LIMIT 1)`,
+                [token.email]
+              );
+              roles = (r2.rows || []).map((row) => row.name);
+            }
+          });
 
-          // Se não encontrou por keycloak_id, buscar por email/username
-          if (!userData && token.email) {
-            const { data: emailUser } = await supabaseAdmin
-              .from('credenciamento_admin_users')
-              .select(
-                `
-                *,
-                roles:credenciamento_admin_user_roles(
-                  role:credenciamento_admin_roles(
-                    name
-                  )
-                )
-              `
-              )
-              .eq('username', token.email)
-              .single();
-
-            userData = emailUser;
-          }
-
-          if (userData) {
-            const roles = userData.roles?.map((r) => r.role.name) || [];
-            token.roles = roles;
-          } else {
-            token.roles = [];
-          }
+          token.roles = roles || [];
         } catch (error) {
           console.error('NextAuth: Erro ao buscar roles do usuário:', error);
           token.roles = [];
@@ -189,6 +155,20 @@ export const authOptions = {
         const identSess = token.name || token.email || token.sub || '(sem identificador)';
         console.log('NextAuth: Sessão criada para', identSess);
         session.logged = true;
+      }
+
+      // TEMP LOG: print full session payload for debugging login flow
+      try {
+        console.log('NextAuth(TEMP): session payload', {
+          userName: token.name || null,
+          email: token.email || null,
+          sub: token.sub || null,
+          roles: token.roles || [],
+          isLocalUser: !!token.isLocalUser,
+          expires: session.expires,
+        });
+      } catch (e) {
+        console.error('NextAuth(TEMP): failed to log session payload', e);
       }
 
       // Garantindo que todos os campos são serializáveis

@@ -1,78 +1,23 @@
 import { withApiAuth } from '../../../../utils/api-auth';
-import { createClient } from '@supabase/supabase-js';
+import { query } from '../../../../lib/config/database';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
-// Handler da rota de eventos recentes
-async function recentEventsHandler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+async function handler(req, res) {
   try {
-    // Buscar eventos recentes do Supabase
-    const { data: events, error } = await supabaseAdmin
-      .from('events')
-      .select(`
-        id,
-        nome,
-        data_inicio,
-        data_fim,
-        status,
-        capacidade,
-        registrations(count)
-      `)
-      .eq('ativo', true)
-      .order('data_inicio', { ascending: false })
-      .limit(10);
-
-    if (error) {
-      console.error('Erro ao buscar eventos:', error);
-      return res.status(500).json({ error: 'Erro ao buscar eventos' });
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', ['GET']);
+      return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const recentEvents = events?.map(event => {
-      const now = new Date();
-      const startDate = new Date(event.data_inicio);
-      const endDate = new Date(event.data_fim);
-      
-      let status = event.status;
-      if (status === 'active') {
-        if (startDate > now) {
-          status = 'Agendado';
-        } else if (endDate < now) {
-          status = 'Concluído';
-        } else {
-          status = 'Em andamento';
-        }
-      } else if (status === 'completed') {
-        status = 'Concluído';
-      } else if (status === 'cancelled') {
-        status = 'Cancelado';
-      } else {
-        status = 'Rascunho';
-      }
+    // Return the most recent events (by data_inicio)
+    const limit = 6;
+    const eventsRes = await query(`SELECT * FROM events ORDER BY data_inicio DESC LIMIT $1`, [limit]);
+    const events = eventsRes.rows || [];
 
-      return {
-        id: event.id,
-        name: event.nome,
-        date: event.data_inicio.split('T')[0], // Apenas a data
-        status,
-        participants: event.registrations?.length || 0,
-        capacity: event.capacidade || 0
-      };
-    }) || [];
-
-    return res.status(200).json(recentEvents);
-  } catch (error) {
-    console.error('Erro ao buscar eventos recentes:', error);
-    return res.status(500).json({ error: 'Erro interno do servidor' });
+    return res.status(200).json(events);
+  } catch (err) {
+    console.error('Erro ao buscar eventos recentes:', err);
+    return res.status(500).json({ error: 'Erro interno ao buscar eventos recentes' });
   }
 }
 
-// Exporta o handler protegido
-const handler = withApiAuth(recentEventsHandler, ['manage_events']);
-export default handler;
+export default withApiAuth(handler, { GET: ['events.view'] });

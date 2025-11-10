@@ -23,17 +23,17 @@ export default async function handler(req, res) {
         // Se encontrou dados no SAS e estão completos
         if (sasData && !isIncompleteData(sasData)) {
             const formattedData = formatSASData(sasData);
-            console.log('Retornando dados completos do SAS');
+            console.log(`Buscando participante: CPF ${cpf}`);
             return res.status(200).json(formattedData);
         }
 
         // Se os dados do SAS são nulos ou incompletos, tentar CPE
         if (!sasData || isIncompleteData(sasData)) {
-            console.log('Dados do SAS não encontrados ou incompletos, tentando CPE');
+            console.log(`Dados do SAS incompletos para CPF ${cpf}, tentando CPE`);
             try {
                 const cpeData = await searchInCPE(cpf);
                 if (cpeData) {
-                    console.log('Dados encontrados no CPE');
+                    console.log(`Dados encontrados no CPE para CPF ${cpf}`);
                     const formattedData = {
                         source: 'cpe', // Definindo explicitamente como CPE
                         cpf: cpeData.cpf,
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
                 console.error('Erro na busca do CPE:', cpeError);
                 // Se temos dados do SAS, mesmo incompletos, retorna eles
                 if (sasData) {
-                    console.log('Erro no CPE, retornando dados disponíveis do SAS');
+                    console.log(`Erro no CPE para CPF ${cpf}, retornando dados disponíveis do SAS`);
                     return res.status(200).json(formatSASData(sasData));
                 }
                 throw cpeError;
@@ -72,8 +72,9 @@ export default async function handler(req, res) {
 
 async function searchInSAS(cpf) {
     try {
-        const cleanCpf = cpf.replace(/\D/g, '');
-        console.log('Buscando no SAS - CPF:', cleanCpf);
+    const cleanCpf = cpf.replace(/\D/g, '');
+    // Minimal debug: log CPF being searched
+    console.log(`Buscando no SAS - CPF: ${cleanCpf}`);
         
         // A URL base já deve incluir /SasServiceCliente/Cliente do .env
         const url = `${process.env.NEXT_PUBLIC_SEBRAE_API_URL}/SelecionarPessoaFisica`;
@@ -82,37 +83,22 @@ async function searchInSAS(cpf) {
         });
 
         const fullUrl = `${url}?${params.toString()}`;
-        console.log('URL completa:', fullUrl);
-        console.log('URL do SAS:', fullUrl);
-        
         const headers = {
             'Content-Type': 'application/json',
             'x-req': process.env.SEBRAE_API_KEY
         };
-        
-        console.log('Headers enviados:', headers);
 
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers: headers
         });
 
-        console.log('Status da resposta:', response.status);
-        console.log('Headers da resposta:', Object.fromEntries(response.headers.entries()));
-
         const responseText = await response.text();
-        console.log('=== INÍCIO DA RESPOSTA BRUTA DO SAS ===');
-        console.log(responseText);
-        console.log('=== FIM DA RESPOSTA BRUTA DO SAS ===');
-
         let data;
         try {
             data = JSON.parse(responseText);
-            console.log('=== DADOS PARSEADOS DO SAS ===');
-            console.log(JSON.stringify(data, null, 2));
-            console.log('=== FIM DOS DADOS PARSEADOS ===');
         } catch (e) {
-            console.error('Erro ao fazer parse da resposta:', e);
+            console.error('Erro ao fazer parse da resposta do SAS:', e);
             throw new Error('Resposta inválida do SAS: ' + responseText);
         }
 
@@ -130,7 +116,6 @@ async function searchInSAS(cpf) {
         }
 
         if (Array.isArray(data) && data.length === 0) {
-            console.log('SAS retornou array vazio - considerando como não encontrado');
             return null;
         }
 
@@ -145,10 +130,9 @@ async function searchInCPE(cpf) {
     try {
         const token = await getCpeToken();
         const cleanCpf = cpf.replace(/\D/g, '');
-        console.log('Buscando no CPE - CPF:', cleanCpf);
+        console.log(`Buscando no CPE - CPF: ${cleanCpf}`);
 
         const url = `https://api-gateway.sebrae.com.br/cpe/v1/pessoa-fisica?cpf=${cleanCpf}`;
-        console.log('URL do CPE:', url);
 
         const response = await fetch(url, {
             method: 'GET',
@@ -173,7 +157,6 @@ async function searchInCPE(cpf) {
         }
 
         const data = await response.json();
-        console.log('Dados recebidos do CPE:', JSON.stringify(data, null, 2));
         return data;
     } catch (error) {
         console.error('Erro ao buscar no CPE:', error);
@@ -207,14 +190,13 @@ function isIncompleteData(sasData) {
 
 function formatSASData(sasData) {
     if (!sasData) {
-        console.log('SAS: Dados não fornecidos');
         return null;
     }
 
     // Se os dados vierem em um array, pega o primeiro item
     const cliente = Array.isArray(sasData) ? sasData[0] : sasData;
     
-    console.log('SAS: Dados do cliente encontrado:', cliente);
+    // found client in SAS
 
     // Buscar email e telefone da lista de contatos
     const contatos = cliente.ListaInformacoesContato || [];
@@ -243,7 +225,6 @@ function formatSASData(sasData) {
         ListaVinculo: vinculos
     };
 
-    console.log('SAS: Dados formatados:', formatted);
     return formatted;
 }
 

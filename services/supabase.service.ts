@@ -5,8 +5,7 @@
  * @version 1.0.0
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseAdmin, supabaseClient } from '@/lib/config/supabase';
+import { query, withTransaction } from '@/lib/config/database';
 import type { Event, EventFilter, Participant, ParticipantFilter } from '@/schemas';
 
 // ============================================================================
@@ -46,12 +45,8 @@ interface ParticipantHistory {
 // ============================================================================
 
 export class SupabaseService {
-  private client: SupabaseClient;
-
-  constructor(useServiceRole: boolean = false) {
-    // Use centralized Supabase clients
-    this.client = useServiceRole ? getSupabaseAdmin() : supabaseClient;
-  }
+  constructor() {}
+  // Note: This service now uses direct SQL via query() and withTransaction()
 
   // ==========================================================================
   // EVENT OPERATIONS
@@ -73,49 +68,58 @@ export class SupabaseService {
       order = 'desc',
     } = filters;
 
-    let query = this.client.from('events').select('*', { count: 'exact' });
+    // Build dynamic WHERE clauses
+    const whereClauses: string[] = [];
+    const params: any[] = [];
 
-    // Aplicar filtros
     if (search) {
-      query = query.or(
-        `nome.ilike.%${search}%,local.ilike.%${search}%,descricao.ilike.%${search}%`
-      );
+      params.push(`%${search}%`);
+      params.push(`%${search}%`);
+      params.push(`%${search}%`);
+      whereClauses.push(`(nome ILIKE $${params.length - 2} OR local ILIKE $${params.length - 1} OR descricao ILIKE $${params.length})`);
     }
 
     if (status && status !== 'all') {
-      query = query.eq('status', status);
+      params.push(status);
+      whereClauses.push(`status = $${params.length}`);
     }
 
     if (modalidade && modalidade !== 'all') {
-      query = query.eq('modalidade', modalidade);
+      params.push(modalidade);
+      whereClauses.push(`modalidade = $${params.length}`);
     }
 
     if (data_inicio) {
-      query = query.gte('data_inicio', data_inicio);
+      params.push(data_inicio);
+      whereClauses.push(`data_inicio >= $${params.length}`);
     }
 
     if (data_fim) {
-      query = query.lte('data_fim', data_fim);
+      params.push(data_fim);
+      whereClauses.push(`data_fim <= $${params.length}`);
     }
 
-    // Ordenação
-    query = query.order(orderBy, { ascending: order === 'asc' });
+    const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // Paginação
+    // Count
+    const countRes = await query(`SELECT COUNT(*) AS count FROM events ${where}`, params);
+    const count = parseInt(countRes.rows[0]?.count || '0', 10);
+
+    // Ordering and pagination
     const offset = (page - 1) * limit;
-    query = query.range(offset, offset + limit - 1);
+    const orderDir = order === 'asc' ? 'ASC' : 'DESC';
+    const orderBySafe = ['data_inicio', 'created_at', 'nome'].includes(orderBy) ? orderBy : 'data_inicio';
 
-    const { data, error, count } = await query;
+    const selectRes = await query(
+      `SELECT * FROM events ${where} ORDER BY ${orderBySafe} ${orderDir} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
 
-    if (error) {
-      throw new Error(`Erro ao buscar eventos: ${error.message}`);
-    }
-
-    const totalPages = Math.ceil((count || 0) / limit);
+    const totalPages = Math.ceil(count / limit);
 
     return {
-      data: data || [],
-      count: count || 0,
+      data: selectRes.rows || [],
+      count,
       page,
       limit,
       totalPages,
@@ -126,34 +130,33 @@ export class SupabaseService {
    * Busca evento por ID
    */
   async getEventById(eventId: string): Promise<Event | null> {
-    const { data, error } = await this.client.from('events').select('*').eq('id', eventId).single();
-
-    if (error) {
-      throw new Error(`Erro ao buscar evento: ${error.message}`);
-    }
-
-    return data;
+    const res = await query('SELECT * FROM events WHERE id = $1 LIMIT 1', [eventId]);
+    return res.rows[0] || null;
   }
 
   /**
    * Busca estatísticas de um evento
    */
   async getEventStats(eventId: string): Promise<EventStats> {
-    const { data: registrations, error } = await this.client
-      .from('registrations')
-      .select('status')
-      .eq('event_id', eventId);
+    const res = await query(
+      `SELECT
+        COUNT(*) FILTER (WHERE true) AS total,
+        COUNT(*) FILTER (WHERE status = 'confirmed') AS credenciados,
+        COUNT(*) FILTER (WHERE status = 'registered') AS pendentes,
+        COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelados
+      FROM registrations WHERE event_id = $1`,
+      [eventId]
+    );
 
-    if (error) {
-      throw new Error(`Erro ao buscar estatísticas: ${error.message}`);
-    }
+    const row = res.rows[0] || { total: 0, credenciados: 0, pendentes: 0, cancelados: 0 };
+    const total = parseInt(row.total || '0', 10);
+    const credenciados = parseInt(row.credenciados || '0', 10);
+    const pendentes = parseInt(row.pendentes || '0', 10);
+    const cancelados = parseInt(row.cancelados || '0', 10);
 
-    const total = registrations?.length || 0;
-    const credenciados = registrations?.filter((r) => r.status === 'confirmed').length || 0;
-    const pendentes = registrations?.filter((r) => r.status === 'registered').length || 0;
-    const cancelados = registrations?.filter((r) => r.status === 'cancelled').length || 0;
-    // Para presença, a forma correta é via check_ins; aqui mantemos 0 pois esta query não traz check_ins
-    const checked_in = 0;
+    // checked_in via check_ins
+    const checkRes = await query(`SELECT COUNT(DISTINCT registration_id) AS checked FROM check_ins WHERE event_id = $1`, [eventId]);
+    const checked_in = parseInt(checkRes.rows[0]?.checked || '0', 10);
 
     return {
       total_participantes: total,
@@ -170,53 +173,46 @@ export class SupabaseService {
    * Cria novo evento
    */
   async createEvent(eventData: Omit<Event, 'id' | 'created_at' | 'updated_at'>): Promise<Event> {
-    const { data, error } = await this.client
-      .from('events')
-      .insert({
-        ...eventData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const fields = Object.keys(eventData);
+    const cols = fields.join(', ');
+    const params = fields.map((_, i) => `$${i + 1}`);
+    const values = Object.values(eventData);
+    // add timestamps
+    values.push(new Date().toISOString());
+    values.push(new Date().toISOString());
 
-    if (error) {
-      throw new Error(`Erro ao criar evento: ${error.message}`);
-    }
-
-    return data;
+    const res = await query(
+      `INSERT INTO events (${cols}, created_at, updated_at) VALUES (${params.join(', ')}, $${values.length - 1}, $${values.length}) RETURNING *`,
+      values
+    );
+    return res.rows[0];
   }
 
   /**
    * Atualiza evento
    */
   async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
-    const { data, error } = await this.client
-      .from('events')
-      .update({
-        ...eventData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', eventId)
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(`Erro ao atualizar evento: ${error.message}`);
+    const fields = Object.keys(eventData || {});
+    if (fields.length === 0) {
+      const res = await query('SELECT * FROM events WHERE id = $1 LIMIT 1', [eventId]);
+      return res.rows[0];
     }
 
-    return data;
+    const sets = fields.map((f, i) => `${f} = $${i + 1}`);
+    const values = Object.values(eventData || {});
+    // push updated_at
+    values.push(new Date().toISOString());
+    const setClause = `${sets.join(', ')}, updated_at = $${values.length}`;
+
+    const res = await query(`UPDATE events SET ${setClause} WHERE id = $${values.length + 1} RETURNING *`, [...values, eventId]);
+    return res.rows[0];
   }
 
   /**
    * Deleta evento
    */
   async deleteEvent(eventId: string): Promise<void> {
-    const { error } = await this.client.from('events').delete().eq('id', eventId);
-
-    if (error) {
-      throw new Error(`Erro ao deletar evento: ${error.message}`);
-    }
+    await query('DELETE FROM events WHERE id = $1', [eventId]);
   }
 
   // ==========================================================================
@@ -241,96 +237,61 @@ export class SupabaseService {
 
     // Se estiver filtrando por event_id, precisamos usar JOIN com registrations
     if (event_id) {
-      let query = this.client
-        .from('registrations')
-        .select(
-          `
-          participant_id,
-          status,
-          participants!inner (
-            id,
-            cpf,
-            nome,
-            email,
-            telefone,
-            company_id,
-            cargo,
-            endereco,
-            fonte,
-            created_at,
-            updated_at
-          )
-        `,
-          { count: 'exact' }
-        )
-        .eq('event_id', event_id);
+      const params: any[] = [event_id];
+      const where: string[] = [`r.event_id = $1`];
 
-      // Aplicar filtros
       if (search) {
-        query = query.or(
-          `participants.nome.ilike.%${search}%,participants.email.ilike.%${search}%,participants.cpf.ilike.%${search}%`
-        );
+        params.push(`%${search}%`);
+        const idx = params.length;
+        where.push(`(p.nome ILIKE $${idx} OR p.email ILIKE $${idx} OR p.cpf ILIKE $${idx})`);
       }
 
       if (status_credenciamento && status_credenciamento !== 'all') {
-        // Mapear status_credenciamento para status da tabela registrations
         const statusMap: Record<string, string> = {
           credentialed: 'confirmed',
           pending: 'registered',
           cancelled: 'cancelled',
         };
-        query = query.eq('status', statusMap[status_credenciamento] || status_credenciamento);
+        params.push(statusMap[status_credenciamento] || status_credenciamento);
+        where.push(`r.status = $${params.length}`);
       }
 
       if (source && source !== 'all') {
-        query = query.eq('participants.fonte', source);
+        params.push(source);
+        where.push(`p.fonte = $${params.length}`);
       }
 
-      // Paginação (antes da ordenação para evitar conflitos)
+      const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+      // Count
+      const countRes = await query(`SELECT COUNT(*) AS count FROM registrations r JOIN participants p ON p.id = r.participant_id ${whereClause}`, params);
+      const count = parseInt(countRes.rows[0]?.count || '0', 10);
+
       const offset = (page - 1) * limit;
-      query = query.range(offset, offset + limit - 1);
 
-      const { data, error, count } = await query;
+      const selectRes = await query(
+        `SELECT p.*, r.status AS registration_status FROM registrations r JOIN participants p ON p.id = r.participant_id ${whereClause} ORDER BY p.${orderBy} ${order === 'asc' ? 'ASC' : 'DESC'} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
 
-      if (error) {
-        throw new Error(`Erro ao buscar participantes: ${error.message}`);
-      }
+      const participants = (selectRes.rows || []).map((row: any) => ({
+        ...row,
+        status_credenciamento:
+          row.registration_status === 'confirmed'
+            ? 'credentialed'
+            : row.registration_status === 'registered'
+            ? 'pending'
+            : row.registration_status === 'cancelled'
+            ? 'cancelled'
+            : row.registration_status,
+        checked_in: false,
+      }));
 
-      // Transformar dados para formato esperado
-      const participants =
-        data?.map((reg: any) => ({
-          ...reg.participants,
-          status_credenciamento:
-            reg.status === 'confirmed'
-              ? 'credentialed'
-              : reg.status === 'registered'
-                ? 'pending'
-                : reg.status === 'cancelled'
-                  ? 'cancelled'
-                  : reg.status,
-          // checked_in deve ser derivado via check_ins em consultas específicas
-          checked_in: false,
-        })) || [];
-
-      // Ordenação manual em memória (Supabase não suporta order em JOINs nested)
-      if (orderBy && participants.length > 0) {
-        participants.sort((a: any, b: any) => {
-          const aVal = a[orderBy];
-          const bVal = b[orderBy];
-          if (aVal === bVal) return 0;
-          if (order === 'asc') {
-            return aVal > bVal ? 1 : -1;
-          } else {
-            return aVal < bVal ? 1 : -1;
-          }
-        });
-      }
-
-      const totalPages = Math.ceil((count || 0) / limit);
+      const totalPages = Math.ceil(count / limit);
 
       return {
         data: participants,
-        count: count || 0,
+        count,
         page,
         limit,
         totalPages,
@@ -338,43 +299,43 @@ export class SupabaseService {
     }
 
     // Query sem filtro de event_id (busca direta em participants)
-    let query = this.client.from('participants').select('*', { count: 'exact' });
+    const params: any[] = [];
+    const where: string[] = [];
 
-    // Aplicar filtros
     if (search) {
-      query = query.or(`nome.ilike.%${search}%,email.ilike.%${search}%,cpf.ilike.%${search}%`);
+      params.push(`%${search}%`);
+      const idx = params.length;
+      where.push(`(nome ILIKE $${idx} OR email ILIKE $${idx} OR cpf ILIKE $${idx})`);
     }
 
     if (source && source !== 'all') {
-      query = query.eq('fonte', source);
+      params.push(source);
+      where.push(`fonte = $${params.length}`);
     }
 
-    // Ordenação
-    query = query.order(orderBy, { ascending: order === 'asc' });
+    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
-    // Paginação
+    const countRes = await query(`SELECT COUNT(*) AS count FROM participants ${whereClause}`, params);
+    const count = parseInt(countRes.rows[0]?.count || '0', 10);
+
     const offset = (page - 1) * limit;
-    query = query.range(offset, offset + limit - 1);
 
-    const { data, error, count } = await query;
+    const selectRes = await query(
+      `SELECT * FROM participants ${whereClause} ORDER BY ${orderBy} ${order === 'asc' ? 'ASC' : 'DESC'} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
 
-    if (error) {
-      throw new Error(`Erro ao buscar participantes: ${error.message}`);
-    }
+    const participantsWithStatus = (selectRes.rows || []).map((p: any) => ({
+      ...p,
+      status_credenciamento: 'pending',
+      checked_in_at: null,
+    }));
 
-    const totalPages = Math.ceil((count || 0) / limit);
-
-    // Adicionar campo status_credenciamento padrão quando buscar sem filtro de evento
-    const participantsWithStatus =
-      data?.map((p) => ({
-        ...p,
-        status_credenciamento: 'pending', // Status padrão quando não há relação com evento específico
-        checked_in_at: null,
-      })) || [];
+    const totalPages = Math.ceil(count / limit);
 
     return {
       data: participantsWithStatus,
-      count: count || 0,
+      count,
       page,
       limit,
       totalPages,
@@ -385,17 +346,8 @@ export class SupabaseService {
    * Busca participante por ID
    */
   async getParticipantById(participantId: string): Promise<Participant | null> {
-    const { data, error } = await this.client
-      .from('participants')
-      .select('*')
-      .eq('id', participantId)
-      .single();
-
-    if (error) {
-      throw new Error(`Erro ao buscar participante: ${error.message}`);
-    }
-
-    return data;
+    const res = await query('SELECT * FROM participants WHERE id = $1 LIMIT 1', [participantId]);
+    return res.rows[0] || null;
   }
 
   /**
@@ -403,49 +355,30 @@ export class SupabaseService {
    */
   async getParticipantHistory(participantCpf: string): Promise<ParticipantHistory[]> {
     // Buscar pelo CPF do participante -> pegar id, depois buscar registrations + evento
-    const { data: p, error: pErr } = await this.client
-      .from('participants')
-      .select('id, cpf')
-      .eq('cpf', participantCpf)
-      .single();
+    const pRes = await query('SELECT id, cpf FROM participants WHERE cpf = $1 LIMIT 1', [participantCpf]);
+    const p = pRes.rows[0];
+    if (!p) throw new Error('Participante não encontrado pelo CPF');
 
-    if (pErr || !p) {
-      throw new Error(`Participante não encontrado pelo CPF`);
-    }
+    const res = await query(
+      `SELECT r.event_id, r.status, r.data_inscricao, r.updated_at, e.nome AS event_nome, e.data_inicio AS event_data_inicio,
+        ci.data_check_in
+      FROM registrations r
+      LEFT JOIN events e ON e.id = r.event_id
+      LEFT JOIN check_ins ci ON ci.registration_id = r.id
+      WHERE r.participant_id = $1
+      ORDER BY r.data_inscricao DESC`,
+      [p.id]
+    );
 
-    const { data, error } = await this.client
-      .from('registrations')
-      .select(
-        `
-        event_id,
-        status,
-        data_inscricao,
-        updated_at,
-        check_ins:check_ins!left ( data_check_in ),
-        events:event_id (
-          nome,
-          data_inicio
-        )
-      `
-      )
-      .eq('participant_id', p.id)
-      .order('data_inscricao', { ascending: false });
-
-    if (error) {
-      throw new Error(`Erro ao buscar histórico: ${error.message}`);
-    }
-
-    return (data || []).map((item: any) => ({
+    // Group by event_id and take first check_in per registration
+    return (res.rows || []).map((item: any) => ({
       event_id: item.event_id,
-      event_nome: item.events?.nome || 'Evento não encontrado',
-      event_data_inicio: item.events?.data_inicio || '',
+      event_nome: item.event_nome || 'Evento não encontrado',
+      event_data_inicio: item.event_data_inicio || '',
       status_credenciamento: item.status === 'confirmed' ? 'credentialed' : item.status,
       credenciado_em: item.data_inscricao || null,
-      checked_in: Array.isArray(item.check_ins) && item.check_ins.length > 0,
-      checked_in_at:
-        Array.isArray(item.check_ins) && item.check_ins.length > 0
-          ? item.check_ins[0].data_check_in
-          : null,
+      checked_in: !!item.data_check_in,
+      checked_in_at: item.data_check_in || null,
     }));
   }
 
@@ -455,21 +388,19 @@ export class SupabaseService {
   async createParticipant(
     participantData: Omit<Participant, 'id' | 'created_at' | 'updated_at'>
   ): Promise<Participant> {
-    const { data, error } = await this.client
-      .from('participants')
-      .insert({
-        ...participantData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const fields = Object.keys(participantData);
+    const cols = fields.join(', ');
+    const params = fields.map((_, i) => `$${i + 1}`);
+    const values = Object.values(participantData);
+    values.push(new Date().toISOString());
+    values.push(new Date().toISOString());
 
-    if (error) {
-      throw new Error(`Erro ao criar participante: ${error.message}`);
-    }
+    const res = await query(
+      `INSERT INTO participants (${cols}, created_at, updated_at) VALUES (${params.join(', ')}, $${values.length - 1}, $${values.length}) RETURNING *`,
+      values
+    );
 
-    return data;
+    return res.rows[0];
   }
 
   /**
@@ -479,32 +410,26 @@ export class SupabaseService {
     participantId: string,
     participantData: Partial<Participant>
   ): Promise<Participant> {
-    const { data, error } = await this.client
-      .from('participants')
-      .update({
-        ...participantData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', participantId)
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(`Erro ao atualizar participante: ${error.message}`);
+    const fields = Object.keys(participantData || {});
+    if (fields.length === 0) {
+      const res = await query('SELECT * FROM participants WHERE id = $1 LIMIT 1', [participantId]);
+      return res.rows[0];
     }
 
-    return data;
+    const sets = fields.map((f, i) => `${f} = $${i + 1}`);
+    const values = Object.values(participantData || {});
+    values.push(new Date().toISOString());
+    const setClause = `${sets.join(', ')}, updated_at = $${values.length}`;
+
+    const res = await query(`UPDATE participants SET ${setClause} WHERE id = $${values.length + 1} RETURNING *`, [...values, participantId]);
+    return res.rows[0];
   }
 
   /**
    * Deleta participante
    */
   async deleteParticipant(participantId: string): Promise<void> {
-    const { error } = await this.client.from('participants').delete().eq('id', participantId);
-
-    if (error) {
-      throw new Error(`Erro ao deletar participante: ${error.message}`);
-    }
+    await query('DELETE FROM participants WHERE id = $1', [participantId]);
   }
 
   /**
@@ -533,5 +458,5 @@ export class SupabaseService {
 // SINGLETON INSTANCES
 // ============================================================================
 
-export const supabaseService = new SupabaseService(false); // Cliente público
-export const supabaseAdminService = new SupabaseService(true); // Cliente admin
+export const supabaseService = new SupabaseService(); // compatibility: public instance
+export const supabaseAdminService = new SupabaseService(); // compatibility: admin instance (same behavior)

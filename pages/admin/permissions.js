@@ -64,6 +64,13 @@ export default function PermissionsManagement() {
         fetch('/api/admin/roles'),
       ]);
 
+      // Verificar se o usuário tem permissão
+      if (usersResponse.status === 403 || rolesResponse.status === 403) {
+        setError('Você não tem permissão para acessar esta página. Apenas administradores podem gerenciar permissões.');
+        setLoading(false);
+        return;
+      }
+
       if (!usersResponse.ok || !rolesResponse.ok) {
         throw new Error('Erro ao carregar dados');
       }
@@ -122,8 +129,8 @@ export default function PermissionsManagement() {
     return getUserRoles(user).some((role) => role.id === roleId);
   };
 
-  // Filtrar apenas usuários Keycloak
-  const keycloakUsers = users.filter((user) => user.user_type === 'keycloak');
+  // Todos os usuários são do Keycloak (não há mais usuários locais)
+  const keycloakUsers = users;
 
   const renderUserTable = (usersList, title) => (
     <div className="mb-8">

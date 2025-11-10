@@ -22,14 +22,14 @@ DROP POLICY IF EXISTS "Local users are insertable by admins" ON credenciamento_a
 DROP POLICY IF EXISTS "Local users are updatable by admins" ON credenciamento_admin_users;
 
 CREATE POLICY "Admin users are viewable by authenticated users" ON credenciamento_admin_users
-    FOR SELECT USING (auth.role() = 'authenticated');
+    FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
 
 CREATE POLICY "Admin users are insertable by admins" ON credenciamento_admin_users
     FOR INSERT WITH CHECK (
         EXISTS (
             SELECT 1 FROM user_roles ur
             JOIN roles r ON ur.role_id = r.id
-            WHERE ur.user_id = auth.uid() AND r.name = 'admin'
+            WHERE ur.user_id = current_setting('myapp.user_id', true)::uuid AND r.name = 'admin'
         )
     );
 
@@ -38,6 +38,6 @@ CREATE POLICY "Admin users are updatable by admins" ON credenciamento_admin_user
         EXISTS (
             SELECT 1 FROM user_roles ur
             JOIN roles r ON ur.role_id = r.id
-            WHERE ur.user_id = auth.uid() AND r.name = 'admin'
+            WHERE ur.user_id = current_setting('myapp.user_id', true)::uuid AND r.name = 'admin'
         )
     );

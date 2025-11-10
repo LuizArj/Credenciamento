@@ -84,14 +84,14 @@ ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de segurança
 CREATE POLICY "Local users are viewable by authenticated users" ON local_users
-    FOR SELECT USING (auth.role() = 'authenticated');
+    FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
 
 CREATE POLICY "Local users are insertable by admins" ON local_users
     FOR INSERT WITH CHECK (
         EXISTS (
             SELECT 1 FROM user_roles ur
             JOIN roles r ON ur.role_id = r.id
-            WHERE ur.user_id = auth.uid() AND r.name = 'admin'
+            WHERE ur.user_id = current_setting('myapp.user_id', true)::uuid AND r.name = 'admin'
         )
     );
 
@@ -100,6 +100,6 @@ CREATE POLICY "Local users are updatable by admins" ON local_users
         EXISTS (
             SELECT 1 FROM user_roles ur
             JOIN roles r ON ur.role_id = r.id
-            WHERE ur.user_id = auth.uid() AND r.name = 'admin'
+            WHERE ur.user_id = current_setting('myapp.user_id', true)::uuid AND r.name = 'admin'
         )
     );

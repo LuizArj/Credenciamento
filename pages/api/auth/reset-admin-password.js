@@ -1,11 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
-
-// Criar um cliente Supabase com service_role para operações administrativas
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogInNlcnZpY2Vfcm9sZSIsCiAgImlzcyI6ICJzdXBhYmFzZSIsCiAgImlhdCI6IDE3MTUwNTA4MDAsCiAgImV4cCI6IDE4NzI4MTcyMDAKfQ.EJ5oiKtCGRMa8HVXO0ZEccUrDzV5lhz0kklx9cr7SKE'
-);
+import { query } from '../../../lib/config/database';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -20,31 +14,15 @@ export default async function handler(req, res) {
     console.log('Atualizando senha do admin...');
 
     // Atualiza a senha do usuário admin
-    const { data, error } = await supabaseAdmin
-      .from('credenciamento_admin_users')
-      .update({ password: hashedPassword })
-      .eq('username', 'admin')
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao atualizar senha:', error);
-      return res.status(500).json({ error: error.message });
+    const { rows } = await query('UPDATE credenciamento_admin_users SET password = $1 WHERE username = $2 RETURNING id, username', [hashedPassword, 'admin']);
+    const data = rows[0];
+    if (!data) {
+      return res.status(500).json({ error: 'Usuário admin não encontrado' });
     }
 
-    console.log('Senha atualizada com sucesso:', { 
-      id: data.id,
-      username: data.username,
-      newPassword: 'admin123' // só mostra em desenvolvimento
-    });
+    console.log('Senha atualizada com sucesso:', { id: data.id, username: data.username, newPassword: 'admin123' });
 
-    return res.status(200).json({ 
-      message: 'Senha atualizada com sucesso',
-      user: {
-        id: data.id,
-        username: data.username
-      }
-    });
+    return res.status(200).json({ message: 'Senha atualizada com sucesso', user: { id: data.id, username: data.username } });
 
   } catch (error) {
     console.error('Erro ao atualizar senha:', error);

@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, supabase } from '@/lib/config/supabase';
+import { query, withTransaction } from '@/lib/config/database';
 import bcrypt from 'bcryptjs';
 import type {
   LocalUser,
@@ -15,15 +15,11 @@ export async function authenticateLocalUser(
   password: string
 ): Promise<AuthResponse> {
   try {
-    const supabaseAdmin = getSupabaseAdmin() as any;
     const uname = (username || '').trim();
-    const { data: user, error } = await supabaseAdmin
-      .from('credenciamento_admin_users')
-      .select('id, username, password, created_at')
-      .eq('username', uname)
-      .maybeSingle();
+    const { rows } = await query('SELECT id, username, password, created_at FROM credenciamento_admin_users WHERE username = $1 LIMIT 1', [uname]);
+    const user = rows[0];
 
-    if (error || !user) {
+    if (!user) {
       return { error: 'Usuário não encontrado' };
     }
 
@@ -54,37 +50,26 @@ export async function authenticateLocalUser(
 // ===== GERENCIAMENTO DE USUÁRIOS =====
 export async function createLocalUser(userData: CreateUserData): Promise<ApiResponse<LocalUser>> {
   try {
-    const supa = supabase as any;
     // Hash da senha
     const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-    // Criar usuário
-    const { data: user, error: userError } = await supa
-      .from('credenciamento_admin_users')
-      .insert({
-        username: userData.username,
-        password: hashedPassword,
-        name: userData.name,
-        email: userData.email,
-      })
-      .select()
-      .single();
-
-    if (userError) throw userError;
-
-    // Associar roles
-    if (userData.roles.length > 0) {
-      const { error: rolesError } = await supa.from('user_roles').insert(
-        userData.roles.map((roleId) => ({
-          user_id: user.id,
-          role_id: roleId,
-        }))
+    const created = await withTransaction(async (client: any) => {
+      const insertUser = await client.query(
+        'INSERT INTO credenciamento_admin_users (username, password, name, email, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+        [userData.username, hashedPassword, userData.name, userData.email, new Date().toISOString(), new Date().toISOString()]
       );
+      const newUser = insertUser.rows[0];
 
-      if (rolesError) throw rolesError;
-    }
+      if (userData.roles && userData.roles.length > 0) {
+        for (const roleId of userData.roles) {
+          await client.query('INSERT INTO user_roles (user_id, role_id, created_at) VALUES ($1,$2,$3)', [newUser.id, roleId, new Date().toISOString()]);
+        }
+      }
 
-    return { data: user };
+      return newUser;
+    });
+
+    return { data: created };
   } catch (error) {
     console.error('Erro ao criar usuário:', error);
     return { error: 'Erro ao criar usuário' };
@@ -96,7 +81,6 @@ export async function updateLocalUser(
   updates: Partial<CreateUserData>
 ): Promise<ApiResponse<LocalUser>> {
   try {
-    const supa = supabase as any;
     const updateData: any = { ...updates };
 
     // Se tiver senha nova, fazer hash
@@ -104,33 +88,45 @@ export async function updateLocalUser(
       updateData.password = await bcrypt.hash(updates.password, 10);
     }
 
-    // Atualizar usuário
-    const { data: user, error: userError } = await supa
-      .from('credenciamento_admin_users')
-      .update(updateData)
-      .eq('id', userId)
-      .select()
-      .single();
+    const updated = await withTransaction(async (client: any) => {
+      // Build set clause dynamically
+      const fields: string[] = [];
+      const values: any[] = [];
+      let idx = 1;
+      for (const key of Object.keys(updateData)) {
+        fields.push(`${key} = $${idx}`);
+        values.push((updateData as any)[key]);
+        idx++;
+      }
+      values.push(userId);
 
-    if (userError) throw userError;
+      const updateQuery = `UPDATE credenciamento_admin_users SET ${fields.join(', ')}, updated_at = $${idx} WHERE id = $${idx + 1} RETURNING *`;
+      // append updated_at and id
+      values.splice(values.length - 1, 0, new Date().toISOString());
+      values.push(userId);
 
-    // Se tiver roles novas, atualizar
-    if (updates.roles) {
-      // Remover roles antigas
-      await supa.from('user_roles').delete().eq('user_id', userId);
+      // If no fields to update (except updated_at), just update timestamp
+      let userRow;
+      if (fields.length > 0) {
+        const res = await client.query(updateQuery, values);
+        userRow = res.rows[0];
+      } else {
+        const res = await client.query('UPDATE credenciamento_admin_users SET updated_at = $1 WHERE id = $2 RETURNING *', [new Date().toISOString(), userId]);
+        userRow = res.rows[0];
+      }
 
-      // Adicionar roles novas
-      const { error: rolesError } = await supa.from('user_roles').insert(
-        updates.roles.map((roleId) => ({
-          user_id: userId,
-          role_id: roleId,
-        }))
-      );
+      // If roles provided, replace them
+      if (updates.roles) {
+        await client.query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+        for (const roleId of updates.roles) {
+          await client.query('INSERT INTO user_roles (user_id, role_id, created_at) VALUES ($1,$2,$3)', [userId, roleId, new Date().toISOString()]);
+        }
+      }
 
-      if (rolesError) throw rolesError;
-    }
+      return userRow;
+    });
 
-    return { data: user };
+    return { data: updated };
   } catch (error) {
     console.error('Erro ao atualizar usuário:', error);
     return { error: 'Erro ao atualizar usuário' };
@@ -139,11 +135,7 @@ export async function updateLocalUser(
 
 export async function deleteLocalUser(userId: string): Promise<ApiResponse> {
   try {
-    const supa = supabase as any;
-    const { error } = await supa.from('credenciamento_admin_users').delete().eq('id', userId);
-
-    if (error) throw error;
-
+    await query('DELETE FROM credenciamento_admin_users WHERE id = $1', [userId]);
     return { data: true };
   } catch (error) {
     console.error('Erro ao deletar usuário:', error);
@@ -153,35 +145,26 @@ export async function deleteLocalUser(userId: string): Promise<ApiResponse> {
 
 export async function getLocalUsers(): Promise<ApiResponse<UserWithRoles[]>> {
   try {
-    const supa = supabase as any;
-    const { data: users, error } = await supa
-      .from('local_users')
-      .select(
-        `
-                *,
-                user_roles (
-                    role_id,
-                    roles (
-                        id,
-                        name,
-                        description
-                    )
-                )
-            `
-      )
-      .order('username');
+    const res = await query(`
+      SELECT u.id, u.username, u.name, u.email, u.created_at, r.id AS role_id, r.name AS role_name, r.description AS role_description
+      FROM local_users u
+      LEFT JOIN user_roles ur ON ur.user_id = u.id
+      LEFT JOIN roles r ON r.id = ur.role_id
+      ORDER BY u.username
+    `);
+    const rows = res.rows || [];
 
-    if (error) throw error;
+    const map: Record<string, any> = {};
+    for (const row of rows) {
+      if (!map[row.id]) {
+        map[row.id] = { id: row.id, username: row.username, name: row.name, email: row.email, created_at: row.created_at, roles: [] };
+      }
+      if (row.role_id) {
+        map[row.id].roles.push({ id: row.role_id, name: row.role_name, description: row.role_description });
+      }
+    }
 
-    // Remove senhas e estrutura roles
-    const usersWithRoles = (users as any[]).map((user: any) => {
-      const { password: _, ...userWithoutPassword } = user;
-      return {
-        ...userWithoutPassword,
-        roles: user.user_roles.map((ur: { roles: Role }) => ur.roles),
-      };
-    });
-
+    const usersWithRoles = Object.values(map);
     return { data: usersWithRoles };
   } catch (error) {
     console.error('Erro ao buscar usuários:', error);
@@ -192,34 +175,13 @@ export async function getLocalUsers(): Promise<ApiResponse<UserWithRoles[]>> {
 // Funções para buscar e verificar roles/permissões
 export async function getUserRoles(userId: string): Promise<ApiResponse<Role[]>> {
   try {
-    const supa = supabase as any;
-    const { data, error } = await supa
-      .from('user_roles')
-      .select(
-        `
-                roles (
-                    id,
-                    name,
-                    description,
-                    created_at
-                )
-            `
-      )
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    // Garante que cada role tem todos os campos necessários
-    const roles = (data as any[]).map((d: any) => {
-      const role = d.roles;
-      return {
-        id: role.id,
-        name: role.name,
-        description: role.description,
-        created_at: role.created_at,
-      } satisfies Role;
-    });
-
+    const res = await query(`
+      SELECT r.id, r.name, r.description, r.created_at
+      FROM user_roles ur
+      JOIN roles r ON r.id = ur.role_id
+      WHERE ur.user_id = $1
+    `, [userId]);
+    const roles = (res.rows || []).map((r) => ({ id: r.id, name: r.name, description: r.description, created_at: r.created_at })) as Role[];
     return { data: roles };
   } catch (error) {
     console.error('Erro ao buscar roles do usuário:', error);
@@ -233,32 +195,19 @@ export async function checkUserPermission(
 ): Promise<boolean> {
   try {
     const { data: roles } = await getUserRoles(userId);
-    if (!roles) return false;
+    if (!roles || roles.length === 0) return false;
 
-    // Buscar permissões de todas as roles do usuário
-    const supa = supabase as any;
-    const { data, error } = await supa
-      .from('role_permissions')
-      .select('permission_id')
-      .in(
-        'role_id',
-        roles.map((r) => r.id)
-      );
+    const roleIds = roles.map((r) => r.id);
+    // Buscar permissões associadas às roles
+    const permsRes = await query(`
+      SELECT p.name
+      FROM role_permissions rp
+      JOIN permissions p ON p.id = rp.permission_id
+      WHERE rp.role_id = ANY($1)
+    `, [roleIds]);
 
-    if (error) throw error;
-    if (!data?.length) return false;
-
-    // Buscar permissões pelos IDs
-    const { data: permissions } = await supa
-      .from('permissions')
-      .select('name')
-      .in(
-        'id',
-        (data as any[]).map((rp: any) => rp.permission_id)
-      );
-
-    // Verificar se o usuário tem a permissão específica
-    return (permissions as any[])?.some((p: any) => p.name === permissionName) || false;
+    const permissions = permsRes.rows || [];
+    return permissions.some((p: any) => p.name === permissionName);
   } catch (error) {
     console.error('Erro ao verificar permissão:', error);
     return false;
@@ -268,29 +217,8 @@ export async function checkUserPermission(
 // Funções para gerenciar roles e permissões
 export async function getRoles(): Promise<ApiResponse<Role[]>> {
   try {
-    const supa = supabase as any;
-    const { data, error } = await supa
-      .from('roles')
-      .select(
-        `
-                id,
-                name,
-                description,
-                created_at
-            `
-      )
-      .order('name');
-
-    if (error) throw error;
-
-    // Garante que cada role tem todos os campos necessários
-    const roles = (data as any[]).map((d: any) => ({
-      id: d.id,
-      name: d.name,
-      description: d.description,
-      created_at: d.created_at,
-    })) satisfies Role[];
-
+    const res = await query('SELECT id, name, description, created_at FROM roles ORDER BY name');
+    const roles = (res.rows || []).map((d) => ({ id: d.id, name: d.name, description: d.description, created_at: d.created_at })) as Role[];
     return { data: roles };
   } catch (error) {
     console.error('Erro ao buscar roles:', error);

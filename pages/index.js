@@ -49,11 +49,23 @@ export default function Home() {
     }
   }, [session, status, router]);
 
+  // Verificar se usuário tem acesso ao módulo admin
+  const userRoles = session?.user?.roles || [];
+  const hasAdminAccess = userRoles.includes('admin') || userRoles.includes('manager');
+  
+  // Filtrar módulos baseado nas permissões
+  const availableModules = menuItems.filter(item => {
+    // Se não for o módulo admin, mostrar sempre
+    if (item.href !== '/admin') return true;
+    // Se for admin, mostrar apenas para admin e manager
+    return hasAdminAccess;
+  });
+
   // Gerenciador de atalhos de teclado
   useEffect(() => {
     const handleKeyPress = (event) => {
       if (event.altKey) {
-        const item = menuItems.find(item => item.shortcut === event.key);
+        const item = availableModules.find(item => item.shortcut === event.key);
         if (item) {
           setActiveModule(item.href);
           setLoading(true);
@@ -64,7 +76,7 @@ export default function Home() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+  }, [availableModules]);
 
   const handleModuleClick = (href) => {
     setActiveModule(href);
@@ -98,7 +110,7 @@ export default function Home() {
           </h1>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {menuItems.map((item) => {
+            {availableModules.map((item) => {
               const Icon = item.icon;
               return (
                 <Link 

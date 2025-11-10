@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  # 'app' é só um nome que você escolhe
+  app:
+    # Usa a imagem que você buildou
+    image: projeto-credenciamento:v1.1.0
+    
+    # Carrega o seu arquivo .env.local
+    env_file:
+      - .env.local
+      
+    # Mapeia as portas (ex: 8080 da sua máquina para 3000 do container)
+    ports:
+      - "8080:3000" # Altere aqui: [PORTA_HOST]:[PORTA_CONTAINER]
+      
+    # Garante que ele use a rede local corretamente
+    networks:
+      - default
+
+networks:
+  default:

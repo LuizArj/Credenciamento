@@ -1,11 +1,6 @@
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { query } from '../../../lib/config/database';
 
 export default async function handler(req, res) {
   try {
@@ -16,12 +11,12 @@ export default async function handler(req, res) {
       return res.status(401).json({ message: 'Não autenticado' });
     }
 
-    // Verificar se o usuário tem permissão de gerenciar usuários
+    // Verificar se o usuário tem permissão de admin
     const userRoles = session.user.roles || [];
-    const hasPermission = userRoles.includes('admin') || userRoles.includes('manager');
+    const hasPermission = userRoles.includes('admin');
     
     if (!hasPermission) {
-      return res.status(403).json({ message: 'Sem permissão para gerenciar usuários' });
+      return res.status(403).json({ message: 'Acesso restrito a administradores' });
     }
 
     switch (req.method) {
@@ -47,30 +42,13 @@ async function updateUserRole(req, res) {
 
   try {
     if (hasRole) {
-      // Adicionar role ao usuário (se não existir)
-      const { error } = await supabaseAdmin
-        .from('credenciamento_admin_user_roles')
-        .upsert(
-          { user_id: userId, role_id: roleId },
-          { onConflict: 'user_id,role_id' }
-        );
-
-      if (error) {
-        console.error('Erro ao adicionar role:', error);
-        throw error;
-      }
+      // Inserir com upsert (ON CONFLICT DO NOTHING)
+      await query(
+        'INSERT INTO credenciamento_admin_user_roles (user_id, role_id) VALUES ($1,$2) ON CONFLICT (user_id, role_id) DO NOTHING',
+        [userId, roleId]
+      );
     } else {
-      // Remover role do usuário
-      const { error } = await supabaseAdmin
-        .from('credenciamento_admin_user_roles')
-        .delete()
-        .eq('user_id', userId)
-        .eq('role_id', roleId);
-
-      if (error) {
-        console.error('Erro ao remover role:', error);
-        throw error;
-      }
+      await query('DELETE FROM credenciamento_admin_user_roles WHERE user_id = $1 AND role_id = $2', [userId, roleId]);
     }
 
     return res.status(200).json({ message: 'Permissões atualizadas com sucesso' });

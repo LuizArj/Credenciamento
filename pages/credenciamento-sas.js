@@ -146,8 +146,7 @@ const ConfigurationScreen = ({ onSessionStart }) => {
     setError('');
 
     try {
-      // Sincronizar evento SAS com banco local automaticamente
-      console.log('Sincronizando evento SAS com banco local...');
+  // Sincronizar evento SAS com banco local automaticamente (minimal logging)
       const syncResponse = await fetch('/api/sync-sas-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,10 +157,8 @@ const ConfigurationScreen = ({ onSessionStart }) => {
 
       if (!syncResponse.ok) {
         console.error('Erro na sincronização:', syncData);
-        // Não bloqueia o fluxo - apenas loga o erro
-        console.warn('Evento não foi sincronizado, mas continuando com credenciamento SAS normal');
       } else {
-        console.log('Evento sincronizado:', syncData.action, syncData.event?.id);
+        console.log('Evento sincronizado com sucesso');
       }
 
       // Continuar com o fluxo normal
@@ -944,12 +941,9 @@ export default function CredenciamentoSAS() {
         .then(async (r) => {
           const body = await r.json().catch(() => ({}));
           if (!r.ok) {
-            console.error(
-              'Erro ao registrar no banco local (background):',
-              body?.message || `${r.status} ${r.statusText}`
-            );
+            console.error('Erro ao registrar no banco local (background):', body?.message || `${r.status} ${r.statusText}`);
           } else {
-            console.log('Credenciamento registrado no banco local (background):', body?.message);
+            // success silently handled in background
           }
         })
         .catch((err) => console.error('Erro na API local (background):', err));

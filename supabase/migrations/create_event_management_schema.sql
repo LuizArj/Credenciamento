@@ -14,6 +14,46 @@ CREATE TABLE IF NOT EXISTS companies (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- ===== TABELAS DE ADMIN (USUÁRIOS E ROLES) =====
+CREATE TABLE IF NOT EXISTS credenciamento_admin_users (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    username TEXT UNIQUE,
+    email TEXT,
+    keycloak_id TEXT UNIQUE,
+    ativo BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS credenciamento_admin_roles (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS credenciamento_admin_user_roles (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES credenciamento_admin_users(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES credenciamento_admin_roles(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, role_id)
+);
+
+-- Seed basic roles if not exist
+INSERT INTO credenciamento_admin_roles (name, description)
+    VALUES ('admin', 'Administrador com todas as permissões')
+    ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO credenciamento_admin_roles (name, description)
+    VALUES ('manager', 'Gerente com permissões de gestão de eventos e relatórios')
+    ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO credenciamento_admin_roles (name, description)
+    VALUES ('operator', 'Operador com permissões de credenciamento')
+    ON CONFLICT (name) DO NOTHING;
+
+
 -- ===== TABELA DE EVENTOS =====
 CREATE TABLE IF NOT EXISTS events (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -35,23 +75,6 @@ CREATE TABLE IF NOT EXISTS events (
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'cancelled', 'completed')),
     configuracoes JSONB DEFAULT '{}', -- configurações específicas do evento
     meta_participantes INTEGER DEFAULT 0,
-    created_by UUID REFERENCES local_users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- ===== TABELA DE CATEGORIAS DE TICKETS =====
-CREATE TABLE IF NOT EXISTS ticket_categories (
-    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    event_id UUID REFERENCES events(id) ON DELETE CASCADE,
-    nome TEXT NOT NULL,
-    descricao TEXT,
-    preco DECIMAL(10,2) DEFAULT 0.00,
-    quantidade_disponivel INTEGER DEFAULT 0,
-    quantidade_vendida INTEGER DEFAULT 0,
-    data_inicio_venda TIMESTAMP WITH TIME ZONE,
-    data_fim_venda TIMESTAMP WITH TIME ZONE,
-    ativo BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -76,6 +99,22 @@ CREATE TABLE IF NOT EXISTS participants (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+-- ===== TABELA DE CATEGORIAS DE TICKETS =====
+CREATE TABLE IF NOT EXISTS ticket_categories (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    event_id UUID REFERENCES events(id) ON DELETE CASCADE,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    preco DECIMAL(10,2) DEFAULT 0.00,
+    quantidade_disponivel INTEGER DEFAULT 0,
+    quantidade_vendida INTEGER DEFAULT 0,
+    data_inicio_venda TIMESTAMP WITH TIME ZONE,
+    data_fim_venda TIMESTAMP WITH TIME ZONE,
+    ativo BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 
 -- ===== TABELA DE REGISTROS/INSCRIÇÕES =====
 CREATE TABLE IF NOT EXISTS registrations (
@@ -90,7 +129,6 @@ CREATE TABLE IF NOT EXISTS registrations (
     codigo_inscricao TEXT UNIQUE, -- código único da inscrição
     observacoes TEXT,
     dados_adicionais JSONB DEFAULT '{}', -- campos customizados por evento
-    created_by UUID REFERENCES local_users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
@@ -116,7 +154,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     acao TEXT NOT NULL CHECK (acao IN ('INSERT', 'UPDATE', 'DELETE')),
     dados_anteriores JSONB, -- dados antes da alteração (para UPDATE e DELETE)
     dados_novos JSONB, -- dados após a alteração (para INSERT e UPDATE)
-    usuario_id UUID REFERENCES local_users(id),
+    usuario_id UUID,
     ip_address INET,
     user_agent TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -146,26 +184,31 @@ END;
 $$ language 'plpgsql';
 
 -- Aplicar trigger em todas as tabelas com updated_at
+DROP TRIGGER IF EXISTS update_companies_updated_at ON companies;
 CREATE TRIGGER update_companies_updated_at
     BEFORE UPDATE ON companies
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_events_updated_at ON events;
 CREATE TRIGGER update_events_updated_at
     BEFORE UPDATE ON events
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_ticket_categories_updated_at ON ticket_categories;
 CREATE TRIGGER update_ticket_categories_updated_at
     BEFORE UPDATE ON ticket_categories
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_participants_updated_at ON participants;
 CREATE TRIGGER update_participants_updated_at
     BEFORE UPDATE ON participants
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_registrations_updated_at ON registrations;
 CREATE TRIGGER update_registrations_updated_at
     BEFORE UPDATE ON registrations
     FOR EACH ROW
@@ -193,14 +236,17 @@ END;
 $$ language 'plpgsql';
 
 -- Aplicar auditoria nas principais tabelas
+DROP TRIGGER IF EXISTS audit_events_trigger ON events;
 CREATE TRIGGER audit_events_trigger
     AFTER INSERT OR UPDATE OR DELETE ON events
     FOR EACH ROW EXECUTE PROCEDURE audit_trigger();
 
+DROP TRIGGER IF EXISTS audit_participants_trigger ON participants;
 CREATE TRIGGER audit_participants_trigger
     AFTER INSERT OR UPDATE OR DELETE ON participants
     FOR EACH ROW EXECUTE PROCEDURE audit_trigger();
 
+DROP TRIGGER IF EXISTS audit_registrations_trigger ON registrations;
 CREATE TRIGGER audit_registrations_trigger
     AFTER INSERT OR UPDATE OR DELETE ON registrations
     FOR EACH ROW EXECUTE PROCEDURE audit_trigger();
@@ -226,6 +272,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_ticket_count_trigger ON registrations;
 CREATE TRIGGER update_ticket_count_trigger
     AFTER INSERT OR DELETE ON registrations
     FOR EACH ROW EXECUTE PROCEDURE update_ticket_sold_count();
@@ -241,6 +288,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS checkin_status_trigger ON check_ins;
 CREATE TRIGGER checkin_status_trigger
     AFTER INSERT ON check_ins
     FOR EACH ROW EXECUTE PROCEDURE update_registration_status_on_checkin();
@@ -297,13 +345,15 @@ ALTER TABLE check_ins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Políticas básicas (podem ser refinadas conforme necessário)
-CREATE POLICY "Enable read access for authenticated users" ON companies FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable read access for authenticated users" ON events FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable read access for authenticated users" ON ticket_categories FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable read access for authenticated users" ON participants FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable read access for authenticated users" ON registrations FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable read access for authenticated users" ON check_ins FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable read access for authenticated users" ON audit_logs FOR SELECT USING (auth.role() = 'authenticated');
+-- Use application-set session variable instead of Supabase-specific auth.role()
+-- Policies check the application session setting 'myapp.user_role' for authenticated access
+CREATE POLICY "Enable read access for authenticated users" ON companies FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
+CREATE POLICY "Enable read access for authenticated users" ON events FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
+CREATE POLICY "Enable read access for authenticated users" ON ticket_categories FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
+CREATE POLICY "Enable read access for authenticated users" ON participants FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
+CREATE POLICY "Enable read access for authenticated users" ON registrations FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
+CREATE POLICY "Enable read access for authenticated users" ON check_ins FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
+CREATE POLICY "Enable read access for authenticated users" ON audit_logs FOR SELECT USING (current_setting('myapp.user_role', true) = 'authenticated');
 
 -- ===== DADOS INICIAIS PARA TESTES =====
 

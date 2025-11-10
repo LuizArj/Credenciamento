@@ -1,12 +1,6 @@
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
-import { createClient } from '@supabase/supabase-js';
-import bcrypt from 'bcryptjs';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { query, withTransaction } from '../../../lib/config/database';
 
 export default async function handler(req, res) {
   try {
@@ -17,12 +11,12 @@ export default async function handler(req, res) {
       return res.status(401).json({ message: 'Não autenticado' });
     }
 
-    // Verificar se o usuário tem permissão de gerenciar usuários
+    // Verificar se o usuário tem permissão de admin para gerenciar usuários
     const userRoles = session.user.roles || [];
-    const hasPermission = userRoles.includes('admin') || userRoles.includes('manager');
+    const hasPermission = userRoles.includes('admin');
     
     if (!hasPermission) {
-      return res.status(403).json({ message: 'Sem permissão para listar usuários' });
+      return res.status(403).json({ message: 'Acesso restrito a administradores' });
     }
 
     switch (req.method) {
@@ -44,36 +38,26 @@ export default async function handler(req, res) {
 
 async function getUsers(req, res) {
   try {
-    const { data: users, error } = await supabaseAdmin
-      .from('credenciamento_admin_users')
-      .select(`
-        id,
-        username,
-        password,
-        created_at,
-        roles:credenciamento_admin_user_roles(
-          role:credenciamento_admin_roles(
-            id,
-            name,
-            description
-          )
-        )
-      `)
-      .order('username');
+    // Buscar usuários e suas roles
+    const sql = `
+      SELECT u.id, u.username, u.email, u.keycloak_id, u.created_at,
+             COALESCE(json_agg(jsonb_build_object('id', r.id, 'name', r.name, 'description', r.description)) FILTER (WHERE r.id IS NOT NULL), '[]') AS roles
+      FROM credenciamento_admin_users u
+      LEFT JOIN credenciamento_admin_user_roles ur ON ur.user_id = u.id
+      LEFT JOIN credenciamento_admin_roles r ON r.id = ur.role_id
+      GROUP BY u.id
+      ORDER BY u.username
+    `;
+    const { rows: users } = await query(sql);
 
-    if (error) {
-      console.error('Erro ao buscar usuários:', error);
-      throw error;
-    }
-
-    // Formatar dados para o frontend
-    const formattedUsers = users.map(user => ({
+    const formattedUsers = users.map((user) => ({
       id: user.id,
       username: user.username,
-      email: user.username, // Assumindo que o username é o email
+      email: user.email || user.username,
+      keycloak_id: user.keycloak_id,
       created_at: user.created_at,
-      user_type: user.password === 'KEYCLOAK_USER' ? 'keycloak' : 'local',
-      roles: user.roles.map(r => r.role)
+      user_type: user.keycloak_id ? 'keycloak' : 'local',
+      roles: user.roles || [],
     }));
 
     return res.status(200).json(formattedUsers);
@@ -88,120 +72,67 @@ async function createUser(req, res) {
     console.log('=== Iniciando criação de usuário ===');
     console.log('Body recebido:', req.body);
     
-    const { username, password, userType, selectedRoles } = req.body;
+    const { username, email, selectedRoles } = req.body;
 
     if (!username || !username.trim()) {
       console.log('Erro: Username vazio ou inválido');
       return res.status(400).json({ message: 'Nome de usuário é obrigatório' });
     }
 
-    // Validação específica por tipo de usuário
-    if (userType === 'local') {
-      if (!password || password.length < 6) {
-        console.log('Erro: Senha inválida para usuário local');
-        return res.status(400).json({ message: 'Senha é obrigatória e deve ter pelo menos 6 caracteres para usuários locais' });
-      }
-    }
+    const userEmail = email || username;
 
     console.log('Username válido:', username.trim());
-    console.log('Tipo de usuário:', userType);
+    console.log('Email:', userEmail);
     console.log('Roles selecionadas:', selectedRoles);
 
     // Verificar se usuário já existe
     console.log('Verificando se usuário já existe...');
-    const { data: existingUser, error: checkError } = await supabaseAdmin
-      .from('credenciamento_admin_users')
-      .select('id')
-      .eq('username', username.trim())
-      .maybeSingle();
-
-    if (checkError) {
-      console.error('Erro ao verificar usuário existente:', checkError);
-      throw checkError;
-    }
-
+    const { rows: existingUserRows } = await query(
+      'SELECT id FROM credenciamento_admin_users WHERE username = $1 OR email = $1 LIMIT 1', 
+      [username.trim()]
+    );
+    const existingUser = existingUserRows[0];
     if (existingUser) {
-      console.log('Usuário já existe:', existingUser);
       return res.status(400).json({ message: 'Usuário já existe no sistema' });
     }
 
     console.log('Usuário não existe, pode criar');
 
-    // Preparar dados do usuário baseado no tipo
-    let userData;
-    
-    if (userType === 'local') {
-      // Para usuários locais, fazer hash da senha
-      console.log('Criando hash da senha para usuário local...');
-      const hashedPassword = await bcrypt.hash(password, 12);
-      
-      userData = {
-        username: username.trim(),
-        password: hashedPassword
-      };
-    } else {
-      // Para usuários Keycloak, usar senha padrão
-      userData = {
-        username: username.trim(),
-        password: 'KEYCLOAK_USER' // Valor padrão para usuários Keycloak
-      };
-    }
+    // Criar usuário (apenas Keycloak)
+    const userData = {
+      username: username.trim(),
+      email: userEmail.trim(),
+    };
 
-    console.log('Dados do usuário a serem inseridos:', { ...userData, password: '[HIDDEN]' });
+    console.log('Dados do usuário a serem inseridos:', userData);
 
-    // Criar usuário
-    console.log('Criando usuário no banco...');
-    const { data: newUser, error: userError } = await supabaseAdmin
-      .from('credenciamento_admin_users')
-      .insert(userData)
-      .select('id')
-      .single();
+    // Criar usuário e roles em transação
+    const newUser = await withTransaction(async (client) => {
+      const insertRes = await client.query(
+        'INSERT INTO credenciamento_admin_users (username, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id',
+        [userData.username, userData.email]
+      );
+      const created = insertRes.rows[0];
+      if (!created) throw new Error('Falha ao criar usuário');
 
-    if (userError) {
-      console.error('Erro ao criar usuário no banco:', userError);
-      throw userError;
-    }
-
-    console.log('Usuário criado com sucesso:', newUser);
-
-    // Adicionar roles se selecionadas
-    if (selectedRoles && selectedRoles.length > 0) {
-      console.log('Atribuindo roles ao usuário...');
-      const roleAssignments = selectedRoles.map(roleId => ({
-        user_id: newUser.id,
-        role_id: roleId
-      }));
-
-      console.log('Dados de roles a serem inseridos:', roleAssignments);
-
-      const { error: rolesError } = await supabaseAdmin
-        .from('credenciamento_admin_user_roles')
-        .insert(roleAssignments);
-
-      if (rolesError) {
-        console.error('Erro ao atribuir roles:', rolesError);
-        // Se falhar ao atribuir roles, remover o usuário criado
-        console.log('Removendo usuário criado devido ao erro nos roles...');
-        await supabaseAdmin
-          .from('credenciamento_admin_users')
-          .delete()
-          .eq('id', newUser.id);
-        
-        throw rolesError;
+      if (selectedRoles && selectedRoles.length > 0) {
+        const values = selectedRoles.map((roleId, idx) => `($${idx * 2 + 2}, $${idx * 2 + 3}, NOW())`).join(',');
+        const params = [created.id];
+        selectedRoles.forEach(roleId => {
+          params.push(created.id, roleId);
+        });
+        await client.query(
+          `INSERT INTO credenciamento_admin_user_roles (user_id, role_id, created_at) VALUES ${values} ON CONFLICT DO NOTHING`,
+          params
+        );
       }
 
-      console.log('Roles atribuídas com sucesso');
-    }
+      return created;
+    });
 
-    console.log(`=== Usuário ${userType} criado com sucesso: ${username} ===`);
-    
     return res.status(201).json({ 
-      message: `Usuário ${userType === 'local' ? 'local' : 'Keycloak'} criado com sucesso`,
-      user: { 
-        id: newUser.id, 
-        username,
-        userType
-      }
+      message: 'Usuário Keycloak criado com sucesso', 
+      user: { id: newUser.id, username, email: userEmail } 
     });
   } catch (error) {
     console.error('=== ERRO AO CRIAR USUÁRIO ===');

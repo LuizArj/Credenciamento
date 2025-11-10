@@ -7,8 +7,7 @@
 
 import type { SASEvent, SASParticipant } from '@/schemas';
 import { normalizeCPF } from '@/lib/utils/cpf';
-import { getSupabaseAdmin } from '@/lib/config/supabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { query, withTransaction } from '@/lib/config/database';
 import type { Database } from '@/types/database.types';
 
 // TYPES
@@ -89,9 +88,7 @@ const SAS_BASE_URL = 'https://sas.sebrae.com.br/SasServiceDisponibilizacoes';
 const SAS_API_KEY = process.env.SEBRAE_API_KEY || '';
 const SAS_COD_UF = process.env.SEBRAE_COD_UF || '24'; // Roraima
 
-// Helper para obter Supabase admin de forma lazy (somente quando necessário)
-// Agora tipado corretamente para garantir segurança de tipos
-const getSupabase = (): SupabaseClient<Database> => getSupabaseAdmin();
+// Note: this service writes directly to Postgres via query() and withTransaction()
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -338,76 +335,58 @@ export class SASService {
    */
   async syncEventToSupabase(options: SyncEventOptions): Promise<string> {
     const { eventData, overwrite = false } = options;
-
-    const supabase = getSupabase();
     // Verificar se evento já existe
-    const { data: existingEvent }: any = await supabase
-      .from('events')
-      .select('id')
-      .eq('codevento_sas', eventData.codevento)
-      .single();
-
+    const existingRes = await query('SELECT id FROM events WHERE codevento_sas = $1 LIMIT 1', [eventData.codevento]);
+    const existingEvent = existingRes.rows[0];
     if (existingEvent && !overwrite) {
       console.log(`[SAS] Evento ${eventData.codevento} já existe no banco`);
       return existingEvent.id;
     }
 
-    // Preparar dados para inserção/atualização
-    // Apenas campos que existem na tabela events do schema
-    const eventToSave: Database['public']['Tables']['events']['Update'] = {
-      nome: eventData.nome,
-      descricao: eventData.descricao ?? null,
-      data_inicio: eventData.data_inicio,
-      data_fim: eventData.data_fim ?? null,
-      local: eventData.local,
-      modalidade: (eventData.modalidade ||
-        null) as Database['public']['Tables']['events']['Update']['modalidade'],
-      status: (eventData.status ||
-        'active') as Database['public']['Tables']['events']['Update']['status'],
-      tipo_evento: eventData.tipo_evento ?? null,
-      publico_alvo: eventData.publico_alvo ?? null,
-      solucao: eventData.solucao ?? null,
-      unidade: eventData.unidade ?? null,
-      codevento_sas: eventData.codevento,
-      updated_at: new Date().toISOString(),
-    };
-
+    const now = new Date().toISOString();
     if (existingEvent && overwrite) {
-      // Atualizar evento existente
-      const { error } = await (supabase as any)
-        .from('events' as any)
-        .update(eventToSave)
-        .eq('id', existingEvent.id);
-
-      if (error) {
-        throw new Error(`Erro ao atualizar evento: ${error.message}`);
-      }
+      // Atualizar
+      const updateRes = await query(`UPDATE events SET nome = $1, descricao = $2, data_inicio = $3, data_fim = $4, local = $5, modalidade = $6, status = $7, tipo_evento = $8, publico_alvo = $9, solucao = $10, unidade = $11, codevento_sas = $12, updated_at = $13 WHERE id = $14`, [
+        eventData.nome,
+        eventData.descricao ?? null,
+        eventData.data_inicio,
+        eventData.data_fim ?? null,
+        eventData.local,
+        eventData.modalidade ?? null,
+        eventData.status ?? 'active',
+        eventData.tipo_evento ?? null,
+        eventData.publico_alvo ?? null,
+        eventData.solucao ?? null,
+        eventData.unidade ?? null,
+        eventData.codevento,
+        now,
+        existingEvent.id,
+      ]);
 
       console.log(`[SAS] ✅ Evento ${eventData.codevento} atualizado`);
       return existingEvent.id;
     } else {
       // Criar novo evento
-      const eventInsert: Database['public']['Tables']['events']['Insert'] = {
-        ...eventToSave,
-        created_at: new Date().toISOString(),
-        // Campos obrigatórios garantidos no Insert
-        nome: eventData.nome,
-        data_inicio: eventData.data_inicio,
-        data_fim: eventData.data_fim ?? null,
-      } as Database['public']['Tables']['events']['Insert'];
+      const insertRes = await query(`INSERT INTO events (nome, descricao, data_inicio, data_fim, local, modalidade, status, tipo_evento, publico_alvo, solucao, unidade, codevento_sas, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`, [
+        eventData.nome,
+        eventData.descricao ?? null,
+        eventData.data_inicio,
+        eventData.data_fim ?? null,
+        eventData.local,
+        eventData.modalidade ?? null,
+        eventData.status ?? 'active',
+        eventData.tipo_evento ?? null,
+        eventData.publico_alvo ?? null,
+        eventData.solucao ?? null,
+        eventData.unidade ?? null,
+        eventData.codevento,
+        now,
+        now,
+      ]);
 
-      const { data: newEvent, error } = await (supabase as any)
-        .from('events' as any)
-        .insert(eventInsert)
-        .select('id')
-        .single();
-
-      if (error || !newEvent) {
-        throw new Error(`Erro ao criar evento: ${error?.message}`);
-      }
-
+      const newId = insertRes.rows[0]?.id;
       console.log(`[SAS] ✅ Evento ${eventData.codevento} criado`);
-      return (newEvent as { id: string }).id;
+      return newId;
     }
   }
 
@@ -421,8 +400,6 @@ export class SASService {
     skipped: number;
   }> {
     const { eventId, participants, overwrite = false } = options;
-
-    const supabase = getSupabase();
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
@@ -430,13 +407,9 @@ export class SASService {
     for (const participant of participants) {
       try {
         // Verificar se participante já existe (por CPF)
-        const { data: existingParticipant }: any = await supabase
-          .from('participants')
-          .select('id')
-          .eq('cpf', participant.cpf)
-          .single();
+        const pRes = await query('SELECT id FROM participants WHERE cpf = $1 LIMIT 1', [participant.cpf]);
+        const existingParticipant = pRes.rows[0];
 
-        // Dados básicos do participante (apenas campos que existem na tabela)
         const participantData = {
           nome: participant.nome,
           email: participant.email || '',
@@ -449,83 +422,61 @@ export class SASService {
 
         if (existingParticipant) {
           participantId = existingParticipant.id;
-
           if (overwrite) {
-            // Atualizar dados do participante
-            const participantUpdate: Database['public']['Tables']['participants']['Update'] = {
-              ...participantData,
-              updated_at: new Date().toISOString(),
-            };
-            await (supabase as any)
-              .from('participants' as any)
-              .update(participantUpdate)
-              .eq('id', participantId);
-          }
-        } else {
-          // Criar novo participante
-          const participantInsert: Database['public']['Tables']['participants']['Insert'] = {
-            ...participantData,
-            created_at: new Date().toISOString(),
-          };
-          const { data: newParticipant, error: insertError } = await (supabase as any)
-            .from('participants' as any)
-            .insert(participantInsert)
-            .select('id')
-            .single();
-
-          if (insertError || !newParticipant) {
-            console.error(`[SAS] Erro ao inserir participante ${participant.cpf}:`, insertError);
-            skipped++;
-            continue;
-          }
-
-          participantId = (newParticipant as { id: string }).id;
-        }
-
-        // Verificar se já existe registration para este participante neste evento
-        const { data: existingReg }: any = await supabase
-          .from('registrations')
-          .select('id, status')
-          .eq('event_id', eventId)
-          .eq('participant_id', participantId)
-          .single();
-
-        if (existingReg) {
-          if (overwrite) {
-            // Atualizar status da registration se necessário
-            const newStatus: Database['public']['Tables']['registrations']['Update']['status'] =
-              participant.status === 'confirmed' ? 'confirmed' : 'registered';
-            const regUpdate: Database['public']['Tables']['registrations']['Update'] = {
-              status: newStatus,
-              updated_at: new Date().toISOString(),
-            };
-            await (supabase as any)
-              .from('registrations' as any)
-              .update(regUpdate)
-              .eq('id', existingReg.id);
+            await query('UPDATE participants SET nome = $1, email = $2, telefone = $3, fonte = $4, updated_at = $5 WHERE id = $6', [
+              participantData.nome,
+              participantData.email,
+              participantData.telefone,
+              participantData.fonte,
+              new Date().toISOString(),
+              participantId,
+            ]);
             updated++;
           } else {
             skipped++;
+            continue;
           }
         } else {
-          // Criar nova registration
-          const registrationData: Database['public']['Tables']['registrations']['Insert'] = {
-            event_id: eventId,
-            participant_id: participantId,
-            status: participant.status === 'confirmed' ? 'confirmed' : 'registered',
-            data_inscricao: new Date().toISOString(),
-          };
-
-          const { error: regError } = await (supabase as any)
-            .from('registrations' as any)
-            .insert(registrationData);
-
-          if (regError) {
-            console.error(`[SAS] Erro ao criar registration para ${participant.cpf}:`, regError);
+          const insertP = await query('INSERT INTO participants (nome, email, cpf, telefone, fonte, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [
+            participantData.nome,
+            participantData.email,
+            participantData.cpf,
+            participantData.telefone,
+            participantData.fonte,
+            new Date().toISOString(),
+            new Date().toISOString(),
+          ]);
+          participantId = insertP.rows[0]?.id;
+          if (!participantId) {
+            console.error(`[SAS] Erro ao inserir participante ${participant.cpf}`);
             skipped++;
-          } else {
-            inserted++;
+            continue;
           }
+          inserted++;
+        }
+
+        // Verificar se já existe registration para este participante neste evento
+        const regRes = await query('SELECT id, status FROM registrations WHERE event_id = $1 AND participant_id = $2 LIMIT 1', [eventId, participantId]);
+        const existingReg = regRes.rows[0];
+
+        if (existingReg) {
+          if (overwrite) {
+            const newStatus = participant.status === 'confirmed' ? 'confirmed' : 'registered';
+            await query('UPDATE registrations SET status = $1, updated_at = $2 WHERE id = $3', [newStatus, new Date().toISOString(), existingReg.id]);
+            updated++;
+          } else {
+            // nothing to do
+          }
+        } else {
+          const insertR = await query('INSERT INTO registrations (event_id, participant_id, status, data_inscricao, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)', [
+            eventId,
+            participantId,
+            participant.status === 'confirmed' ? 'confirmed' : 'registered',
+            new Date().toISOString(),
+            new Date().toISOString(),
+            new Date().toISOString(),
+          ]);
+          inserted++;
         }
       } catch (error) {
         console.error(`[SAS] Erro ao processar participante ${participant.cpf}:`, error);

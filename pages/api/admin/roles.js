@@ -1,11 +1,6 @@
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { query } from '../../../lib/config/database';
 
 export default async function handler(req, res) {
   try {
@@ -16,12 +11,12 @@ export default async function handler(req, res) {
       return res.status(401).json({ message: 'Não autenticado' });
     }
 
-    // Verificar se o usuário tem permissão de gerenciar usuários
+    // Verificar se o usuário tem permissão de admin
     const userRoles = session.user.roles || [];
-    const hasPermission = userRoles.includes('admin') || userRoles.includes('manager');
+    const hasPermission = userRoles.includes('admin');
     
     if (!hasPermission) {
-      return res.status(403).json({ message: 'Sem permissão para listar roles' });
+      return res.status(403).json({ message: 'Acesso restrito a administradores' });
     }
 
     switch (req.method) {
@@ -40,16 +35,7 @@ export default async function handler(req, res) {
 
 async function getRoles(req, res) {
   try {
-    const { data: roles, error } = await supabaseAdmin
-      .from('credenciamento_admin_roles')
-      .select('id, name, description')
-      .order('name');
-
-    if (error) {
-      console.error('Erro ao buscar roles:', error);
-      throw error;
-    }
-
+    const { rows: roles } = await query('SELECT id, name, description FROM credenciamento_admin_roles ORDER BY name');
     return res.status(200).json(roles);
   } catch (error) {
     console.error('Erro ao buscar roles:', error);

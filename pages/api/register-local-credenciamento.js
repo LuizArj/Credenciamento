@@ -1,11 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { normalizeCPF } from '@/lib/utils/cpf';
 import { getCurrentDateTimeGMT4 } from '@/lib/utils/timezone';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { query, withTransaction } from '../../lib/config/database';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -28,201 +23,88 @@ export default async function handler(req, res) {
     });
 
     // 1. Buscar o evento local pelo CODEVENTO_SAS
-    let localEvent;
+    let localEvent = null;
     if (localEventId) {
-      const { data: eventById } = await supabaseAdmin
-        .from('events')
-        .select('*')
-        .eq('id', localEventId)
-        .single();
-      localEvent = eventById;
+      const { rows } = await query('SELECT * FROM events WHERE id = $1 LIMIT 1', [localEventId]);
+      localEvent = rows[0];
     }
 
     if (!localEvent) {
-      const { data: eventByCode } = await supabaseAdmin
-        .from('events')
-        .select('*')
-        .eq('codevento_sas', String(eventDetails.id))
-        .single();
-      localEvent = eventByCode;
+      const { rows } = await query('SELECT * FROM events WHERE codevento_sas = $1 LIMIT 1', [String(eventDetails.id)]);
+      localEvent = rows[0];
     }
 
     if (!localEvent) {
       console.error('Evento local não encontrado para SAS ID:', eventDetails.id);
-      return res.status(404).json({
-        message: 'Evento não foi sincronizado no banco local',
-        sasEventId: eventDetails.id,
-      });
+      return res.status(404).json({ message: 'Evento não foi sincronizado no banco local', sasEventId: eventDetails.id });
     }
 
     const cpfClean = normalizeCPF(participant.cpf);
 
-    // 2. Verificar/criar participante
-    let localParticipant;
-    const { data: existingParticipant } = await supabaseAdmin
-      .from('participants')
-      .select('*')
-      .eq('cpf', cpfClean)
-      .single();
+    // 2. Verificar/criar participante (em transação onde necessário)
+    let localParticipant = null;
+    const existingRows = await query('SELECT * FROM participants WHERE cpf = $1 LIMIT 1', [cpfClean]);
+    const existingParticipant = existingRows.rows[0];
 
     if (existingParticipant) {
-      // Atualizar dados do participante
-      const { data: updatedParticipant, error: updateError } = await supabaseAdmin
-        .from('participants')
-        .update({
-          nome: participant.name,
-          email: participant.email,
-          telefone: participant.phone,
-          fonte: participant.source || 'sas',
-          updated_at: getCurrentDateTimeGMT4(),
-        })
-        .eq('id', existingParticipant.id)
-        .select()
-        .single();
-
-      if (updateError) {
-        console.error('Erro ao atualizar participante:', updateError);
-        return res.status(500).json({
-          message: 'Erro ao atualizar participante',
-          error: updateError.message,
-        });
-      }
-
-      localParticipant = updatedParticipant;
+      const { rows: updatedRows } = await query(
+        'UPDATE participants SET nome = $1, email = $2, telefone = $3, fonte = $4, updated_at = $5 WHERE id = $6 RETURNING *',
+        [participant.name, participant.email, participant.phone, participant.source || 'sas', getCurrentDateTimeGMT4(), existingParticipant.id]
+      );
+      localParticipant = updatedRows[0];
     } else {
-      // Criar novo participante
-      const participantData = {
-        cpf: cpfClean,
-        nome: participant.name,
-        email: participant.email,
-        telefone: participant.phone,
-        fonte: participant.source || 'sas',
-        observacoes: `Criado automaticamente via credenciamento SAS - Evento ${eventDetails.id}`,
-        ativo: true,
-      };
-
-      const { data: newParticipant, error: createError } = await supabaseAdmin
-        .from('participants')
-        .insert(participantData)
-        .select()
-        .single();
-
-      if (createError) {
-        console.error('Erro ao criar participante:', createError);
-        return res.status(500).json({
-          message: 'Erro ao criar participante',
-          error: createError.message,
-        });
-      }
-
-      localParticipant = newParticipant;
+      const { rows: newRows } = await query(
+        `INSERT INTO participants (cpf, nome, email, telefone, fonte, observacoes, ativo) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [cpfClean, participant.name, participant.email, participant.phone, participant.source || 'sas', `Criado automaticamente via credenciamento SAS - Evento ${eventDetails.id}`, true]
+      );
+      localParticipant = newRows[0];
     }
 
     // 3. Verificar se já existe registro/inscrição
-    const { data: existingRegistration } = await supabaseAdmin
-      .from('registrations')
-      .select('*')
-      .eq('event_id', localEvent.id)
-      .eq('participant_id', localParticipant.id)
-      .single();
-
-    let localRegistration;
-    if (existingRegistration) {
-      localRegistration = existingRegistration;
-      // Garantir que a inscrição esteja pelo menos confirmada
+    // 3. Verificar se já existe registro/inscrição
+    const regRows = await query('SELECT * FROM registrations WHERE event_id = $1 AND participant_id = $2 LIMIT 1', [localEvent.id, localParticipant.id]);
+    let localRegistration = regRows.rows[0];
+    if (localRegistration) {
       if (localRegistration.status !== 'confirmed') {
-        const { data: updatedReg } = await supabaseAdmin
-          .from('registrations')
-          .update({ status: 'confirmed', updated_at: getCurrentDateTimeGMT4() })
-          .eq('id', localRegistration.id)
-          .select()
-          .single();
-        if (updatedReg) localRegistration = updatedReg;
+        const { rows: updatedRegRows } = await query('UPDATE registrations SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *', ['confirmed', getCurrentDateTimeGMT4(), localRegistration.id]);
+        if (updatedRegRows[0]) localRegistration = updatedRegRows[0];
       }
     } else {
-      // Criar nova inscrição
       const registrationData = {
         event_id: localEvent.id,
         participant_id: localParticipant.id,
         data_inscricao: getCurrentDateTimeGMT4(),
-        // Ao credenciar pelo sistema, confirmar a inscrição; presença será registrada em check_ins
         status: 'confirmed',
         forma_pagamento: 'sas',
         valor_pago: 0.0,
         codigo_inscricao: `SAS-${eventDetails.id}-${cpfClean}`,
         observacoes: `Inscrição criada automaticamente via credenciamento SAS`,
       };
-
-      const { data: newRegistration, error: regError } = await supabaseAdmin
-        .from('registrations')
-        .insert(registrationData)
-        .select()
-        .single();
-
-      if (regError) {
-        console.error('Erro ao criar registro:', regError);
-        return res.status(500).json({
-          message: 'Erro ao criar registro de inscrição',
-          error: regError.message,
-        });
-      }
-
-      localRegistration = newRegistration;
+      const { rows: newRegRows } = await query(
+        `INSERT INTO registrations (event_id, participant_id, data_inscricao, status, forma_pagamento, valor_pago, codigo_inscricao, observacoes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [registrationData.event_id, registrationData.participant_id, registrationData.data_inscricao, registrationData.status, registrationData.forma_pagamento, registrationData.valor_pago, registrationData.codigo_inscricao, registrationData.observacoes]
+      );
+      localRegistration = newRegRows[0];
     }
 
     // 4. Verificar se já foi feito check-in
-    const { data: existingCheckIn } = await supabaseAdmin
-      .from('check_ins')
-      .select('*')
-      .eq('registration_id', localRegistration.id)
-      .single();
-
+    const checkRows = await query('SELECT * FROM check_ins WHERE registration_id = $1 LIMIT 1', [localRegistration.id]);
+    const existingCheckIn = checkRows.rows[0];
     if (!existingCheckIn) {
-      // Criar check-in com horário GMT-4
       const checkInData = {
         registration_id: localRegistration.id,
         data_check_in: getCurrentDateTimeGMT4(),
         responsavel_credenciamento: attendantName || 'Sistema SAS',
         observacoes: `Check-in realizado automaticamente via sistema SAS`,
       };
-
-      const { data: newCheckIn, error: checkInError } = await supabaseAdmin
-        .from('check_ins')
-        .insert(checkInData)
-        .select()
-        .single();
-
-      if (checkInError) {
-        console.error('Erro ao criar check-in:', checkInError);
-        return res.status(500).json({
-          message: 'Erro ao criar check-in',
-          error: checkInError.message,
-        });
-      }
-
+      const { rows: newCheckRows } = await query(`INSERT INTO check_ins (registration_id, data_check_in, responsavel_credenciamento, observacoes) VALUES ($1,$2,$3,$4) RETURNING *`, [checkInData.registration_id, checkInData.data_check_in, checkInData.responsavel_credenciamento, checkInData.observacoes]);
+      const newCheckIn = newCheckRows[0];
       console.log('Credenciamento registrado com sucesso no banco local');
-
-      return res.status(200).json({
-        message: 'Credenciamento registrado com sucesso',
-        data: {
-          participant: localParticipant,
-          event: localEvent,
-          registration: localRegistration,
-          checkIn: newCheckIn,
-        },
-      });
+      return res.status(200).json({ message: 'Credenciamento registrado com sucesso', data: { participant: localParticipant, event: localEvent, registration: localRegistration, checkIn: newCheckIn } });
     } else {
       console.log('Check-in já existia para este participante');
-
-      return res.status(200).json({
-        message: 'Participante já tinha check-in registrado',
-        data: {
-          participant: localParticipant,
-          event: localEvent,
-          registration: localRegistration,
-          checkIn: existingCheckIn,
-        },
-      });
+      return res.status(200).json({ message: 'Participante já tinha check-in registrado', data: { participant: localParticipant, event: localEvent, registration: localRegistration, checkIn: existingCheckIn } });
     }
   } catch (error) {
     console.error('Erro geral no registro do credenciamento:', error);

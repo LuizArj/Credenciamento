@@ -18,13 +18,25 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 
-    // Supabase
-    NEXT_PUBLIC_SUPABASE_URL: z.string().url({
-      message: 'NEXT_PUBLIC_SUPABASE_URL deve ser uma URL válida',
+    // PostgreSQL
+    POSTGRES_USER: z.string().min(1, {
+      message: 'POSTGRES_USER é obrigatório',
     }),
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, {
-      message: 'NEXT_PUBLIC_SUPABASE_ANON_KEY é obrigatória',
+    POSTGRES_PASSWORD: z.string().min(1, {
+      message: 'POSTGRES_PASSWORD é obrigatório',
     }),
+    POSTGRES_HOST: z.string().min(1, {
+      message: 'POSTGRES_HOST é obrigatório',
+    }),
+    POSTGRES_PORT: z.string().default('5432'),
+    POSTGRES_DATABASE: z.string().min(1, {
+      message: 'POSTGRES_DATABASE é obrigatório',
+    }),
+    POSTGRES_SSL: z.enum(['true', 'false']).default('false'),
+
+    // Supabase (opcionais — podem ser usados apenas no client)
+    NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SUPABASE_SERVICE_KEY: z.string().min(1).optional(),
 
@@ -81,11 +93,6 @@ const envSchema = z
       .optional()
       .default('900000')
       .transform((val) => Number(val)),
-  })
-  .refine((data) => data.SUPABASE_SERVICE_ROLE_KEY || data.SUPABASE_SERVICE_KEY, {
-    message:
-      'É necessário definir SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_SERVICE_KEY no arquivo .env.local',
-    path: ['SUPABASE_SERVICE_ROLE_KEY'],
   });
 
 /**

@@ -29,16 +29,29 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Verificar permissões de admin para rotas administrativas
-  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+  // Verificar permissões para rotas específicas de admin
+  if (pathname.startsWith('/api/admin') || pathname.startsWith('/admin')) {
     const roles = (token.roles as string[]) || [];
-    const hasAdminAccess = roles.includes('admin') || roles.includes('operator');
-
-    if (!hasAdminAccess) {
+    
+    // Operator não pode acessar módulo admin
+    if (roles.includes('operator') && !roles.includes('admin') && !roles.includes('manager')) {
       const url = request.nextUrl.clone();
       url.pathname = '/admin/unauthorized';
       return NextResponse.redirect(url);
     }
+    
+    // Rotas que exigem role admin
+    const adminOnlyRoutes = ['/api/admin/permissions', '/api/admin/users', '/api/admin/roles', '/admin/permissions'];
+    const isAdminOnlyRoute = adminOnlyRoutes.some(route => pathname.startsWith(route));
+    
+    if (isAdminOnlyRoute && !roles.includes('admin')) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/admin/unauthorized';
+      return NextResponse.redirect(url);
+    }
+    
+    // Para outras rotas admin (eventos, participantes, dashboard)
+    // Admin e Manager podem acessar
   }
 
   // Adicionar headers de segurança

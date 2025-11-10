@@ -1,12 +1,8 @@
 import { withApiAuth } from '../../../utils/api-auth';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { query, withTransaction } from '../../../lib/config/database';
 
 async function handler(req, res) {
+  console.log(`[API] /api/admin/participants ${req.method} - query=${JSON.stringify(req.query)} body=${req.method==='GET'? '{}': JSON.stringify(req.body ? req.body : {})}`);
   switch (req.method) {
     case 'GET':
       return handleGet(req, res);
@@ -27,65 +23,38 @@ async function handleGet(req, res) {
   try {
     const { search, eventId, page = 1, limit = 10 } = req.query;
 
-    // Buscar registros de inscrições (registrations) com status credenciado
-    // Consideramos credenciado quando status === 'confirmed'
-    let query = supabaseAdmin
-      .from('registrations')
-      .select(
-        `
-        participant_id,
-        status,
-        participants!inner (
-          id,
-          cpf,
-          nome,
-          email,
-          telefone,
-          cargo,
-          fonte,
-          company_id,
-          created_at,
-          updated_at,
-          companies (
-            id,
-            cnpj,
-            razao_social,
-            nome_fantasia
-          )
-        )
-      `,
-        { count: 'exact' }
-      )
-      .eq('status', 'confirmed')
-      .order('participant_id', { ascending: true });
+    // Buscar registros de inscrições (registrations) com status 'confirmed'
+    // Vamos buscar os participantes relacionados e as empresas (left join).
+    const params = ['confirmed'];
+    let where = 'r.status = $1';
 
     if (eventId) {
-      query = query.eq('event_id', eventId);
+      params.push(eventId);
+      where += ` AND r.event_id = $${params.length}`;
     }
 
     if (search) {
-      // Buscar por nome/cpf/email do participante
-      // PostgREST permite referenciar colunas aninhadas usando o caminho
-      query = query.or(
-        `participants.nome.ilike.%${search}%,participants.cpf.ilike.%${search}%,participants.email.ilike.%${search}%`
-      );
+      params.push(`%${search}%`);
+      where += ` AND (p.nome ILIKE $${params.length} OR p.cpf ILIKE $${params.length} OR p.email ILIKE $${params.length})`;
     }
 
-    const { data: regs, error } = await query;
+    const sql = `
+      SELECT r.participant_id, r.status,
+             p.id AS p_id, p.cpf, p.nome, p.email, p.telefone, p.cargo, p.fonte, p.company_id, p.created_at, p.updated_at,
+             c.id AS company_id, c.cnpj, c.razao_social, c.nome_fantasia
+      FROM registrations r
+      JOIN participants p ON p.id = r.participant_id
+      LEFT JOIN companies c ON c.id = p.company_id
+      WHERE ${where}
+      ORDER BY r.participant_id ASC
+    `;
 
-    if (error) {
-      console.error('Erro ao buscar participantes credenciados:', error);
-      return res.status(500).json({ error: 'Erro ao buscar participantes credenciados' });
-    }
+    const { rows: regs } = await query(sql, params);
 
     if (!regs || regs.length === 0) {
       return res.status(200).json({
         participants: [],
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: 0,
-        },
+        pagination: { page: parseInt(page), limit: parseInt(limit), total: 0 },
       });
     }
 
@@ -95,11 +64,22 @@ async function handleGet(req, res) {
     const normalizeCpf = (cpf) => (cpf || '').replace(/\D/g, '');
 
     for (const row of regs) {
-      const p = row.participants;
-      if (!p) continue;
-      const cpfKey = normalizeCpf(p.cpf);
+      const p = {
+        id: row.p_id,
+        cpf: row.cpf,
+        nome: row.nome,
+        email: row.email,
+        telefone: row.telefone,
+        cargo: row.cargo,
+        fonte: row.fonte,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+      const company = row.company_id
+        ? { id: row.company_id, cnpj: row.cnpj, razao_social: row.razao_social, nome_fantasia: row.nome_fantasia }
+        : null;
 
-      const company = p.companies || null;
+      const cpfKey = normalizeCpf(p.cpf);
 
       if (!byCpf.has(cpfKey)) {
         byCpf.set(cpfKey, {
@@ -110,37 +90,19 @@ async function handleGet(req, res) {
           telefone: p.telefone || null,
           cargo: p.cargo || null,
           fonte: p.fonte || null,
-          company: company
-            ? {
-                id: company.id,
-                cnpj: company.cnpj,
-                razao_social: company.razao_social,
-                nome_fantasia: company.nome_fantasia,
-              }
-            : null,
+          company,
           created_at: p.created_at,
           updated_at: p.updated_at,
         });
       } else {
-        // Concatenar informações faltantes
         const acc = byCpf.get(cpfKey);
         acc.nome = acc.nome || p.nome;
         acc.email = acc.email || p.email;
         acc.telefone = acc.telefone || p.telefone;
         acc.cargo = acc.cargo || p.cargo;
         acc.fonte = acc.fonte || p.fonte;
-        if (!acc.company && company) {
-          acc.company = {
-            id: company.id,
-            cnpj: company.cnpj,
-            razao_social: company.razao_social,
-            nome_fantasia: company.nome_fantasia,
-          };
-        }
-        // Preferir updated_at mais recente
-        if (p.updated_at && (!acc.updated_at || p.updated_at > acc.updated_at)) {
-          acc.updated_at = p.updated_at;
-        }
+        if (!acc.company && company) acc.company = company;
+        if (p.updated_at && (!acc.updated_at || p.updated_at > acc.updated_at)) acc.updated_at = p.updated_at;
       }
     }
 
@@ -203,100 +165,83 @@ async function handlePost(req, res) {
     }
 
     // Verificar se CPF já existe
-    const { data: existingParticipant } = await supabaseAdmin
-      .from('participants')
-      .select('id, cpf')
-      .eq('cpf', cpf)
-      .single();
-
+    const { rows: existingRows } = await query('SELECT id, cpf FROM participants WHERE cpf = $1 LIMIT 1', [cpf]);
+    const existingParticipant = existingRows[0];
     if (existingParticipant) {
-      return res.status(400).json({
-        error: 'Já existe um participante com este CPF',
-      });
+      return res.status(400).json({ error: 'Já existe um participante com este CPF' });
     }
 
     // Processar empresa se fornecida
     let companyId = null;
     if (company) {
       if (typeof company === 'string') {
-        // É um ID de empresa existente
         companyId = company;
       } else if (company.cnpj) {
-        // São dados de uma nova empresa
-        const { data: existingCompany } = await supabaseAdmin
-          .from('companies')
-          .select('id')
-          .eq('cnpj', company.cnpj)
-          .single();
-
+        const { rows: existingCompanyRows } = await query('SELECT id FROM companies WHERE cnpj = $1 LIMIT 1', [company.cnpj]);
+        const existingCompany = existingCompanyRows[0];
         if (existingCompany) {
           companyId = existingCompany.id;
         } else {
-          // Criar nova empresa
-          const { data: newCompany, error: companyError } = await supabaseAdmin
-            .from('companies')
-            .insert([
-              {
-                cnpj: company.cnpj,
-                razao_social: company.razaoSocial || company.razao_social,
-                nome_fantasia: company.nomeFantasia || company.nome_fantasia,
-                telefone: company.telefone,
-                email: company.email,
-                endereco: company.endereco,
-              },
-            ])
-            .select()
-            .single();
-
-          if (companyError) {
-            console.error('Erro ao criar empresa:', companyError);
+          const { rows: newCompanyRows } = await query(
+            `INSERT INTO companies (cnpj, razao_social, nome_fantasia, telefone, email, endereco)
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, cnpj, razao_social, nome_fantasia`,
+            [
+              company.cnpj,
+              company.razaoSocial || company.razao_social || null,
+              company.nomeFantasia || company.nome_fantasia || null,
+              company.telefone || null,
+              company.email || null,
+              company.endereco || null,
+            ]
+          );
+          const newCompany = newCompanyRows[0];
+          if (!newCompany) {
+            console.error('Erro ao criar empresa: sem retorno');
             return res.status(500).json({ error: 'Erro ao criar empresa' });
           }
-
           companyId = newCompany.id;
         }
       }
     }
 
     // Criar o participante
-    const { data: participant, error: participantError } = await supabaseAdmin
-      .from('participants')
-      .insert([
-        {
+    // Inserir participante (em transação para segurança)
+    const result = await withTransaction(async (client) => {
+      const insertRes = await client.query(
+        `INSERT INTO participants (cpf, nome, email, telefone, data_nascimento, genero, escolaridade, profissao, company_id, cargo, endereco, fonte, dados_externos)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         RETURNING id, cpf, nome, email, telefone, data_nascimento, genero, escolaridade, profissao, company_id, cargo, endereco, fonte, dados_externos, created_at, updated_at`,
+        [
           cpf,
           nome,
-          email,
-          telefone,
-          data_nascimento: dataNascimento,
-          genero,
-          escolaridade,
-          profissao,
-          company_id: companyId,
-          cargo,
-          endereco,
-          fonte,
-          dados_externos: dadosExternos,
-        },
-      ])
-      .select(
-        `
-        *,
-        companies (
-          id,
-          cnpj,
-          razao_social,
-          nome_fantasia
-        )
-      `
-      )
-      .single();
+          email || null,
+          telefone || null,
+          dataNascimento || null,
+          genero || null,
+          escolaridade || null,
+          profissao || null,
+          companyId || null,
+          cargo || null,
+          endereco || null,
+          fonte || 'manual',
+          dadosExternos || {},
+        ]
+      );
 
-    if (participantError) {
-      console.error('Erro ao criar participante:', participantError);
-      return res.status(500).json({ error: 'Erro ao criar participante' });
-    }
+      const inserted = insertRes.rows[0];
+      if (!inserted) throw new Error('Falha ao inserir participante');
 
-    return res.status(201).json(participant);
+      // Buscar empresa associada para formatar retorno
+      let companyRow = null;
+      if (inserted.company_id) {
+        const compRes = await client.query('SELECT id, cnpj, razao_social, nome_fantasia FROM companies WHERE id = $1', [inserted.company_id]);
+        companyRow = compRes.rows[0] || null;
+      }
+
+      return { ...inserted, companies: companyRow };
+    });
+
+    return res.status(201).json(result);
   } catch (error) {
     console.error('Erro inesperado ao criar participante:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -313,29 +258,17 @@ async function handlePut(req, res) {
     }
 
     // Verificar se o participante existe
-    const { data: existingParticipant, error: checkError } = await supabaseAdmin
-      .from('participants')
-      .select('id, cpf')
-      .eq('id', id)
-      .single();
-
-    if (checkError || !existingParticipant) {
+    const { rows: existingParticipantRows } = await query('SELECT id, cpf FROM participants WHERE id = $1 LIMIT 1', [id]);
+    const existingParticipant = existingParticipantRows[0];
+    if (!existingParticipant) {
       return res.status(404).json({ error: 'Participante não encontrado' });
     }
 
     // Se o CPF foi alterado, verificar se não há conflito
     if (participantData.cpf && participantData.cpf !== existingParticipant.cpf) {
-      const { data: cpfConflict } = await supabaseAdmin
-        .from('participants')
-        .select('id')
-        .eq('cpf', participantData.cpf)
-        .neq('id', id)
-        .single();
-
-      if (cpfConflict) {
-        return res.status(400).json({
-          error: 'Já existe outro participante com este CPF',
-        });
+      const { rows: cpfConflictRows } = await query('SELECT id FROM participants WHERE cpf = $1 AND id <> $2 LIMIT 1', [participantData.cpf, id]);
+      if (cpfConflictRows[0]) {
+        return res.status(400).json({ error: 'Já existe outro participante com este CPF' });
       }
     }
 
@@ -347,35 +280,28 @@ async function handlePut(req, res) {
       } else if (typeof company === 'string') {
         companyId = company;
       } else if (company.cnpj) {
-        const { data: existingCompany } = await supabaseAdmin
-          .from('companies')
-          .select('id')
-          .eq('cnpj', company.cnpj)
-          .single();
-
+        const { rows: existingCompanyRows } = await query('SELECT id FROM companies WHERE cnpj = $1 LIMIT 1', [company.cnpj]);
+        const existingCompany = existingCompanyRows[0];
         if (existingCompany) {
           companyId = existingCompany.id;
         } else {
-          const { data: newCompany, error: companyError } = await supabaseAdmin
-            .from('companies')
-            .insert([
-              {
-                cnpj: company.cnpj,
-                razao_social: company.razaoSocial || company.razao_social,
-                nome_fantasia: company.nomeFantasia || company.nome_fantasia,
-                telefone: company.telefone,
-                email: company.email,
-                endereco: company.endereco,
-              },
-            ])
-            .select()
-            .single();
-
-          if (companyError) {
-            console.error('Erro ao criar empresa:', companyError);
+          const { rows: newCompanyRows } = await query(
+            `INSERT INTO companies (cnpj, razao_social, nome_fantasia, telefone, email, endereco)
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+            [
+              company.cnpj,
+              company.razaoSocial || company.razao_social || null,
+              company.nomeFantasia || company.nome_fantasia || null,
+              company.telefone || null,
+              company.email || null,
+              company.endereco || null,
+            ]
+          );
+          const newCompany = newCompanyRows[0];
+          if (!newCompany) {
+            console.error('Erro ao criar empresa: sem retorno');
             return res.status(500).json({ error: 'Erro ao criar empresa' });
           }
-
           companyId = newCompany.id;
         }
       }
@@ -401,30 +327,30 @@ async function handlePut(req, res) {
     if (participantData.ativo !== undefined) updateData.ativo = participantData.ativo;
     if (companyId !== undefined) updateData.company_id = companyId;
 
-    // Atualizar participante
-    const { data: updatedParticipant, error: updateError } = await supabaseAdmin
-      .from('participants')
-      .update(updateData)
-      .eq('id', id)
-      .select(
-        `
-        *,
-        companies (
-          id,
-          cnpj,
-          razao_social,
-          nome_fantasia
-        )
-      `
-      )
-      .single();
+    // Atualizar participante (em transação)
+    const updated = await withTransaction(async (client) => {
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      for (const [k, v] of Object.entries(updateData)) {
+        sets.push(`${k} = $${idx}`);
+        vals.push(v);
+        idx++;
+      }
+      vals.push(id);
+      const sql = `UPDATE participants SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, cpf, nome, email, telefone, company_id, created_at, updated_at`;
+      const resUpdate = await client.query(sql, vals);
+      const part = resUpdate.rows[0];
+      if (!part) throw new Error('Falha ao atualizar participante');
+      let companyRow = null;
+      if (part.company_id) {
+        const compRes = await client.query('SELECT id, cnpj, razao_social, nome_fantasia FROM companies WHERE id = $1', [part.company_id]);
+        companyRow = compRes.rows[0] || null;
+      }
+      return { ...part, companies: companyRow };
+    });
 
-    if (updateError) {
-      console.error('Erro ao atualizar participante:', updateError);
-      return res.status(500).json({ error: 'Erro ao atualizar participante' });
-    }
-
-    return res.status(200).json(updatedParticipant);
+    return res.status(200).json(updated);
   } catch (error) {
     console.error('Erro inesperado ao atualizar participante:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -441,32 +367,12 @@ async function handleDelete(req, res) {
     }
 
     // Verificar se há registrações para este participante
-    const { data: registrations, error: checkError } = await supabaseAdmin
-      .from('registrations')
-      .select('id')
-      .eq('participant_id', id)
-      .limit(1);
-
-    if (checkError) {
-      console.error('Erro ao verificar registrações:', checkError);
-      return res.status(500).json({ error: 'Erro ao verificar registrações do participante' });
+    const { rows: regRows } = await query('SELECT id FROM registrations WHERE participant_id = $1 LIMIT 1', [id]);
+    if (regRows.length > 0) {
+      return res.status(400).json({ error: 'Não é possível excluir participante com registrações em eventos. Desative o participante em vez de excluí-lo.' });
     }
 
-    if (registrations && registrations.length > 0) {
-      return res.status(400).json({
-        error:
-          'Não é possível excluir participante com registrações em eventos. Desative o participante em vez de excluí-lo.',
-      });
-    }
-
-    // Excluir o participante
-    const { error: deleteError } = await supabaseAdmin.from('participants').delete().eq('id', id);
-
-    if (deleteError) {
-      console.error('Erro ao excluir participante:', deleteError);
-      return res.status(500).json({ error: 'Erro ao excluir participante' });
-    }
-
+    await query('DELETE FROM participants WHERE id = $1', [id]);
     return res.status(200).json({ message: 'Participante excluído com sucesso' });
   } catch (error) {
     console.error('Erro inesperado ao excluir participante:', error);

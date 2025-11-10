@@ -19,13 +19,7 @@ export {
   loggingConfig,
   type Env,
 } from './env';
+// Database helpers (Postgres)
+export { db, query, withTransaction } from './database';
 
-// Clientes Supabase
-export {
-  supabaseClient,
-  supabaseApi,
-  getSupabaseAdmin,
-  isSupabaseConfigured,
-  isSupabaseAdminConfigured,
-  supabase, // deprecated
-} from './supabase';
+// Note: Supabase client exports removed from default config to prefer Postgres `db` on server-side.

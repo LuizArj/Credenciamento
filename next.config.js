@@ -4,9 +4,7 @@ const nextConfig = {
   swcMinify: true,
 
   // Configurações para desenvolvimento com SSL auto-assinado
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
-  },
+  experimental: {},
   // Não falhar o build de produção por erros do ESLint
   eslint: {
     ignoreDuringBuilds: true,

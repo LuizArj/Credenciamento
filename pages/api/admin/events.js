@@ -1,12 +1,8 @@
 import { withApiAuth } from '../../../utils/api-auth';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+import { query, withTransaction } from '../../../lib/config/database';
 
 async function handler(req, res) {
+  console.log(`[API] /api/admin/events ${req.method} - query=${JSON.stringify(req.query)} body=${req.method==='GET'? '{}': JSON.stringify(req.body ? req.body : {})}`);
   switch (req.method) {
     case 'GET':
       return handleGet(req, res);
@@ -41,81 +37,69 @@ async function handleGet(req, res) {
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'data_inicio';
     const ascending = sortOrder === 'asc';
 
-    // Primeiro, buscar apenas os eventos com contagem total
-    let query = supabaseAdmin
-      .from('events')
-      .select('*', { count: 'exact' })
-      .order(sortField, { ascending });
+    // Build WHERE clauses and parameters
+    const params = [];
+    const where = [];
 
-    // Filtros
     if (status && status !== 'all') {
-      query = query.eq('status', status);
+      params.push(status);
+      where.push(`status = $${params.length}`);
     }
 
     if (search) {
-      query = query.or(
-        `nome.ilike.%${search}%, local.ilike.%${search}%, codevento_sas.ilike.%${search}%`
-      );
+      params.push(`%${search}%`);
+      where.push(`(nome ILIKE $${params.length} OR local ILIKE $${params.length} OR codevento_sas ILIKE $${params.length})`);
     }
 
-    // Filtro de data
     if (dateFrom) {
-      query = query.gte('data_inicio', dateFrom);
+      params.push(dateFrom);
+      where.push(`data_inicio >= $${params.length}`);
     }
 
     if (dateTo) {
-      query = query.lte('data_inicio', dateTo);
+      params.push(dateTo);
+      where.push(`data_inicio <= $${params.length}`);
     }
 
-    // Paginação
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    query = query.range(offset, offset + parseInt(limit) - 1);
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const { data: events, error, count } = await query;
+    // Count total
+    const countRes = await query(`SELECT COUNT(*)::int AS total FROM events ${whereSql}`, params);
+    const total = countRes.rows[0]?.total || 0;
 
-    if (error) {
-      console.error('Erro ao buscar eventos:', error);
-      return res.status(500).json({ error: 'Erro ao buscar eventos' });
+    // Pagination
+    const limitVal = parseInt(limit, 10) || 10;
+    const offset = (parseInt(page, 10) - 1) * limitVal;
+    params.push(limitVal, offset);
+
+    const eventsRes = await query(
+      `SELECT * FROM events ${whereSql} ORDER BY ${sortField} ${sortOrder === 'asc' ? 'ASC' : 'DESC'} LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+
+    const events = eventsRes.rows || [];
+
+    if (!events.length) {
+      return res.status(200).json({ events: [], total, page: parseInt(page), limit: limitVal });
     }
 
-    // Se não há eventos, retornar array vazio
-    if (!events || events.length === 0) {
-      return res.status(200).json({
-        events: [],
-        total: 0,
-        page: parseInt(page),
-        limit: parseInt(limit),
-      });
-    }
-
-    // Buscar estatísticas de registrations para cada evento
+    // registration stats
     const eventIds = events.map((e) => e.id);
-    const { data: registrationStats } = await supabaseAdmin
-      .from('registrations')
-      .select('event_id, status')
-      .in('event_id', eventIds);
+    const regRes = await query(`SELECT event_id, status FROM registrations WHERE event_id = ANY($1)`, [eventIds]);
+    const registrationStats = regRes.rows || [];
 
-    // Agrupar estatísticas por evento
     const statsByEvent = {};
-    registrationStats?.forEach((reg) => {
-      if (!statsByEvent[reg.event_id]) {
-        statsByEvent[reg.event_id] = {
-          total: 0,
-          checkedIn: 0,
-          cancelled: 0,
-        };
-      }
-      statsByEvent[reg.event_id].total++;
-      if (reg.status === 'checked_in') statsByEvent[reg.event_id].checkedIn++;
-      if (reg.status === 'cancelled') statsByEvent[reg.event_id].cancelled++;
+    registrationStats.forEach((reg) => {
+      const id = reg.event_id;
+      if (!statsByEvent[id]) statsByEvent[id] = { total: 0, checkedIn: 0, cancelled: 0 };
+      statsByEvent[id].total++;
+      if (reg.status === 'checked_in') statsByEvent[id].checkedIn++;
+      if (reg.status === 'cancelled') statsByEvent[id].cancelled++;
     });
 
-    // Processar dados e adicionar estatísticas reais
     const eventsWithStats = events.map((event) => {
       const stats = statsByEvent[event.id] || { total: 0, checkedIn: 0, cancelled: 0 };
-      const attendanceRate =
-        stats.total > 0 ? ((stats.checkedIn / stats.total) * 100).toFixed(1) : '0';
-
+      const attendanceRate = stats.total > 0 ? ((stats.checkedIn / stats.total) * 100).toFixed(1) : '0';
       return {
         ...event,
         totalRegistrations: stats.total,
@@ -126,12 +110,7 @@ async function handleGet(req, res) {
       };
     });
 
-    return res.status(200).json({
-      events: eventsWithStats,
-      total: count || 0,
-      page: parseInt(page),
-      limit: parseInt(limit),
-    });
+    return res.status(200).json({ events: eventsWithStats, total, page: parseInt(page), limit: limitVal });
   } catch (error) {
     console.error('Erro inesperado ao buscar eventos:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -185,63 +164,58 @@ async function handlePost(req, res) {
       });
     }
 
-    // Criar o evento
-    const { data: event, error: eventError } = await supabaseAdmin
-      .from('events')
-      .insert([
-        {
-          nome,
-          descricao,
-          data_inicio: dataInicio,
-          data_fim: dataFim,
-          local,
-          endereco,
-          capacidade: parseInt(capacidade) || 0,
-          modalidade,
-          tipo_evento: tipoEvento,
-          publico_alvo: publicoAlvo,
-          gerente,
-          coordenador,
-          solucao,
-          unidade,
-          tipo_acao: tipoAcao,
-          status,
-          meta_participantes: parseInt(metaParticipantes) || 0,
-          configuracoes,
-          codevento_sas,
-        },
-      ])
-      .select()
-      .single();
+    // Criar o evento em transação e inserir categorias de tickets quando fornecidas
+    try {
+      const created = await withTransaction(async (client) => {
+        const insertRes = await client.query(
+          `INSERT INTO events (nome, descricao, data_inicio, data_fim, local, endereco, capacidade, modalidade, tipo_evento, publico_alvo, gerente, coordenador, solucao, unidade, tipo_acao, status, meta_participantes, configuracoes, codevento_sas)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+          [
+            nome,
+            descricao || null,
+            dataInicio,
+            dataFim || null,
+            local,
+            endereco || null,
+            parseInt(capacidade) || 0,
+            modalidade || null,
+            tipoEvento || null,
+            publicoAlvo || null,
+            gerente || null,
+            coordenador || null,
+            solucao || null,
+            unidade || null,
+            tipoAcao || null,
+            status,
+            parseInt(metaParticipantes) || 0,
+            configuracoes || {},
+            codevento_sas || null,
+          ]
+        );
 
-    if (eventError) {
-      console.error('Erro ao criar evento:', eventError);
+        const event = insertRes.rows[0];
+
+        if (ticketCategories && ticketCategories.length > 0) {
+          const insertValues = [];
+          const params = [];
+          ticketCategories.forEach((cat, i) => {
+            const baseIdx = params.length + 1;
+            insertValues.push(`($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5}, $${baseIdx + 6})`);
+            params.push(event.id, cat.nome, cat.descricao || null, parseFloat(cat.preco) || 0, parseInt(cat.quantidadeDisponivel) || 0, cat.dataInicioVenda || null, cat.dataFimVenda || null);
+          });
+
+          const categoriesSql = `INSERT INTO ticket_categories (event_id, nome, descricao, preco, quantidade_disponivel, data_inicio_venda, data_fim_venda) VALUES ${insertValues.join(',')}`;
+          await client.query(categoriesSql, params);
+        }
+
+        return event;
+      });
+
+      return res.status(201).json(created);
+    } catch (e) {
+      console.error('Erro ao criar evento (transação):', e);
       return res.status(500).json({ error: 'Erro ao criar evento' });
     }
-
-    // Criar categorias de tickets se fornecidas
-    if (ticketCategories.length > 0) {
-      const categories = ticketCategories.map((cat) => ({
-        event_id: event.id,
-        nome: cat.nome,
-        descricao: cat.descricao,
-        preco: parseFloat(cat.preco) || 0,
-        quantidade_disponivel: parseInt(cat.quantidadeDisponivel) || 0,
-        data_inicio_venda: cat.dataInicioVenda,
-        data_fim_venda: cat.dataFimVenda,
-      }));
-
-      const { error: categoriesError } = await supabaseAdmin
-        .from('ticket_categories')
-        .insert(categories);
-
-      if (categoriesError) {
-        console.error('Erro ao criar categorias de tickets:', categoriesError);
-        // Não retorna erro fatal, evento já foi criado
-      }
-    }
-
-    return res.status(201).json(event);
   } catch (error) {
     console.error('Erro inesperado ao criar evento:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -257,82 +231,68 @@ async function handlePut(req, res) {
       return res.status(400).json({ error: 'ID do evento é obrigatório' });
     }
 
-    // Verificar se o evento existe
-    const { data: existingEvent, error: checkError } = await supabaseAdmin
-      .from('events')
-      .select('id, status')
-      .eq('id', id)
-      .single();
+    // Atualizar evento usando SQL e transação
+    try {
+      const updated = await withTransaction(async (client) => {
+        // Build dynamic SET clause
+        const fields = [];
+        const params = [];
+        let idx = 1;
+        if (eventData.nome) { fields.push(`nome = $${idx++}`); params.push(eventData.nome); }
+        if (eventData.descricao !== undefined) { fields.push(`descricao = $${idx++}`); params.push(eventData.descricao); }
+        if (eventData.dataInicio !== undefined) { fields.push(`data_inicio = $${idx++}`); params.push(eventData.dataInicio); }
+        if (eventData.dataFim !== undefined) { fields.push(`data_fim = $${idx++}`); params.push(eventData.dataFim); }
+        if (eventData.local !== undefined) { fields.push(`local = $${idx++}`); params.push(eventData.local); }
+        if (eventData.endereco !== undefined) { fields.push(`endereco = $${idx++}`); params.push(eventData.endereco); }
+        if (eventData.capacidade !== undefined) { fields.push(`capacidade = $${idx++}`); params.push(parseInt(eventData.capacidade) || 0); }
+        if (eventData.modalidade !== undefined) { fields.push(`modalidade = $${idx++}`); params.push(eventData.modalidade); }
+        if (eventData.tipoEvento !== undefined) { fields.push(`tipo_evento = $${idx++}`); params.push(eventData.tipoEvento); }
+        if (eventData.publicoAlvo !== undefined) { fields.push(`publico_alvo = $${idx++}`); params.push(eventData.publicoAlvo); }
+        if (eventData.gerente !== undefined) { fields.push(`gerente = $${idx++}`); params.push(eventData.gerente); }
+        if (eventData.coordenador !== undefined) { fields.push(`coordenador = $${idx++}`); params.push(eventData.coordenador); }
+        if (eventData.solucao !== undefined) { fields.push(`solucao = $${idx++}`); params.push(eventData.solucao); }
+        if (eventData.unidade !== undefined) { fields.push(`unidade = $${idx++}`); params.push(eventData.unidade); }
+        if (eventData.tipoAcao !== undefined) { fields.push(`tipo_acao = $${idx++}`); params.push(eventData.tipoAcao); }
+        if (eventData.status !== undefined) { fields.push(`status = $${idx++}`); params.push(eventData.status); }
+        if (eventData.metaParticipantes !== undefined) { fields.push(`meta_participantes = $${idx++}`); params.push(parseInt(eventData.metaParticipantes) || 0); }
+        if (eventData.configuracoes !== undefined) { fields.push(`configuracoes = $${idx++}`); params.push(eventData.configuracoes); }
+        if (eventData.codevento_sas !== undefined) { fields.push(`codevento_sas = $${idx++}`); params.push(eventData.codevento_sas); }
 
-    if (checkError || !existingEvent) {
-      return res.status(404).json({ error: 'Evento não encontrado' });
-    }
+        if (fields.length === 0) {
+          // nothing to update, just return current row
+          const r = await client.query('SELECT * FROM events WHERE id = $1 LIMIT 1', [id]);
+          return r.rows[0];
+        }
 
-    // Preparar dados para atualização
-    const updateData = {};
-    if (eventData.nome) updateData.nome = eventData.nome;
-    if (eventData.descricao !== undefined) updateData.descricao = eventData.descricao;
-    if (eventData.dataInicio) updateData.data_inicio = eventData.dataInicio;
-    if (eventData.dataFim !== undefined) updateData.data_fim = eventData.dataFim;
-    if (eventData.local) updateData.local = eventData.local;
-    if (eventData.endereco !== undefined) updateData.endereco = eventData.endereco;
-    if (eventData.capacidade !== undefined)
-      updateData.capacidade = parseInt(eventData.capacidade) || 0;
-    if (eventData.modalidade) updateData.modalidade = eventData.modalidade;
-    if (eventData.tipoEvento) updateData.tipo_evento = eventData.tipoEvento;
-    if (eventData.publicoAlvo !== undefined) updateData.publico_alvo = eventData.publicoAlvo;
-    if (eventData.gerente !== undefined) updateData.gerente = eventData.gerente;
-    if (eventData.coordenador !== undefined) updateData.coordenador = eventData.coordenador;
-    if (eventData.solucao !== undefined) updateData.solucao = eventData.solucao;
-    if (eventData.unidade !== undefined) updateData.unidade = eventData.unidade;
-    if (eventData.tipoAcao !== undefined) updateData.tipo_acao = eventData.tipoAcao;
-    if (eventData.status) updateData.status = eventData.status;
-    if (eventData.metaParticipantes !== undefined)
-      updateData.meta_participantes = parseInt(eventData.metaParticipantes) || 0;
-    if (eventData.configuracoes !== undefined) updateData.configuracoes = eventData.configuracoes;
-    if (eventData.codevento_sas !== undefined) updateData.codevento_sas = eventData.codevento_sas;
+        params.push(id);
+        const updateQuery = `UPDATE events SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING *`;
+        const resUpdate = await client.query(updateQuery, params);
+        const updatedEvent = resUpdate.rows[0];
 
-    // Atualizar evento
-    const { data: updatedEvent, error: updateError } = await supabaseAdmin
-      .from('events')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
+        // Update ticket categories if provided
+        if (ticketCategories && Array.isArray(ticketCategories)) {
+          await client.query('DELETE FROM ticket_categories WHERE event_id = $1', [id]);
+          if (ticketCategories.length > 0) {
+            const insertValues = [];
+            const p = [];
+            ticketCategories.forEach(() => {
+              const base = p.length + 1;
+              insertValues.push(`($${base}, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`);
+            });
+            ticketCategories.forEach((cat) => { p.push(id, cat.nome, cat.descricao || null, parseFloat(cat.preco) || 0, parseInt(cat.quantidadeDisponivel) || 0, cat.dataInicioVenda || null, cat.dataFimVenda || null); });
+            const sql = `INSERT INTO ticket_categories (event_id, nome, descricao, preco, quantidade_disponivel, data_inicio_venda, data_fim_venda) VALUES ${insertValues.join(',')}`;
+            await client.query(sql, p);
+          }
+        }
 
-    if (updateError) {
-      console.error('Erro ao atualizar evento:', updateError);
+        return updatedEvent;
+      });
+
+      return res.status(200).json(updated);
+    } catch (e) {
+      console.error('Erro ao atualizar evento (transação):', e);
       return res.status(500).json({ error: 'Erro ao atualizar evento' });
     }
-
-    // Atualizar categorias de tickets se fornecidas
-    if (ticketCategories && Array.isArray(ticketCategories)) {
-      // Remover categorias existentes
-      await supabaseAdmin.from('ticket_categories').delete().eq('event_id', id);
-
-      // Inserir novas categorias
-      if (ticketCategories.length > 0) {
-        const categories = ticketCategories.map((cat) => ({
-          event_id: id,
-          nome: cat.nome,
-          descricao: cat.descricao,
-          preco: parseFloat(cat.preco) || 0,
-          quantidade_disponivel: parseInt(cat.quantidadeDisponivel) || 0,
-          data_inicio_venda: cat.dataInicioVenda,
-          data_fim_venda: cat.dataFimVenda,
-        }));
-
-        const { error: categoriesError } = await supabaseAdmin
-          .from('ticket_categories')
-          .insert(categories);
-
-        if (categoriesError) {
-          console.error('Erro ao atualizar categorias de tickets:', categoriesError);
-        }
-      }
-    }
-
-    return res.status(200).json(updatedEvent);
   } catch (error) {
     console.error('Erro inesperado ao atualizar evento:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -347,31 +307,19 @@ async function handleDelete(req, res) {
     if (!id) {
       return res.status(400).json({ error: 'ID do evento é obrigatório' });
     }
-
     // Verificar se há registrações para este evento
-    const { data: registrations, error: checkError } = await supabaseAdmin
-      .from('registrations')
-      .select('id')
-      .eq('event_id', id)
-      .limit(1);
+    try {
+      const regsRes = await query('SELECT id FROM registrations WHERE event_id = $1 LIMIT 1', [id]);
+      if (regsRes.rows && regsRes.rows.length > 0) {
+        return res.status(400).json({
+          error: 'Não é possível excluir evento com participantes registrados. Cancele o evento em vez de excluí-lo.',
+        });
+      }
 
-    if (checkError) {
-      console.error('Erro ao verificar registrações:', checkError);
-      return res.status(500).json({ error: 'Erro ao verificar registrações do evento' });
-    }
-
-    if (registrations && registrations.length > 0) {
-      return res.status(400).json({
-        error:
-          'Não é possível excluir evento com participantes registrados. Cancele o evento em vez de excluí-lo.',
-      });
-    }
-
-    // Excluir o evento (categorias de tickets serão excluídas automaticamente pelo CASCADE)
-    const { error: deleteError } = await supabaseAdmin.from('events').delete().eq('id', id);
-
-    if (deleteError) {
-      console.error('Erro ao excluir evento:', deleteError);
+      // Excluir o evento (ticket_categories tem ON DELETE CASCADE)
+      await query('DELETE FROM events WHERE id = $1', [id]);
+    } catch (dbErr) {
+      console.error('Erro ao verificar/excluir evento:', dbErr);
       return res.status(500).json({ error: 'Erro ao excluir evento' });
     }
 
