@@ -59,7 +59,7 @@ export default async function handler(req, res) {
 
     const event = eventResult.rows[0];
 
-    // Fetch statistics
+    // Fetch statistics (apenas participantes bipados pelo sistema)
     let stats = {};
     if (includeStats) {
       const statsResult = await query({
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
             COUNT(DISTINCT CASE WHEN r.status = 'checked_in' THEN r.id END) as checked_in,
             COUNT(DISTINCT CASE WHEN r.status = 'pending' THEN r.id END) as pendentes,
             COUNT(DISTINCT CASE WHEN r.status = 'cancelled' THEN r.id END) as cancelados,
-            COUNT(DISTINCT ci.id) as total_checkins
+            COUNT(DISTINCT ci.id) FILTER (WHERE ci.data_check_in IS NOT NULL) as total_checkins_sistema
           FROM registrations r
           LEFT JOIN check_ins ci ON ci.registration_id = r.id
           WHERE r.event_id = $1
@@ -118,6 +118,17 @@ export default async function handler(req, res) {
       // Event info section
       overviewSheet.addRow(['RELATÓRIO DO EVENTO']);
       overviewSheet.addRow([]);
+
+      // Data de extração
+      const now = new Date();
+      const extractionDate = now.toLocaleDateString('pt-BR');
+      const extractionTime = now.toLocaleTimeString('pt-BR');
+      overviewSheet.addRow([
+        'Extraído do sistema',
+        `credenciamento.rr.sebrae.com.br em ${extractionDate} às ${extractionTime}`,
+      ]);
+      overviewSheet.addRow([]);
+
       overviewSheet.addRow(['Nome do Evento', event.nome]);
       overviewSheet.addRow(['Código SAS', event.codevento_sas || 'N/A']);
       overviewSheet.addRow([
@@ -133,16 +144,19 @@ export default async function handler(req, res) {
       overviewSheet.addRow(['Status', event.status]);
       overviewSheet.addRow([]);
 
-      // Statistics section
+      // Statistics section (apenas bipados pelo sistema)
       if (includeStats && stats) {
         overviewSheet.addRow(['ESTATÍSTICAS']);
         overviewSheet.addRow([]);
         overviewSheet.addRow(['Total de Participantes', parseInt(stats.total_participants) || 0]);
-        overviewSheet.addRow(['Credenciados', parseInt(stats.checked_in) || 0]);
+        overviewSheet.addRow(['Credenciados (Bipados)', parseInt(stats.checked_in) || 0]);
         overviewSheet.addRow(['Confirmados', parseInt(stats.credenciados) || 0]);
         overviewSheet.addRow(['Pendentes', parseInt(stats.pendentes) || 0]);
         overviewSheet.addRow(['Cancelados', parseInt(stats.cancelados) || 0]);
-        overviewSheet.addRow(['Total de Check-ins', parseInt(stats.total_checkins) || 0]);
+        overviewSheet.addRow([
+          'Check-ins pelo Sistema',
+          parseInt(stats.total_checkins_sistema) || 0,
+        ]);
       }
 
       // Style the overview sheet
@@ -217,17 +231,46 @@ export default async function handler(req, res) {
 
       // Generate PDF report
       const doc = new jsPDF();
-      let yPosition = 20;
+      let yPosition = 15;
 
-      // Title
-      doc.setFontSize(18);
+      // Header - Sistema Sebrae
+      doc.setFillColor(0, 82, 147); // Azul Sebrae
+      doc.rect(0, 0, 210, 25, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
-      doc.text('RELATÓRIO DO EVENTO', 105, yPosition, { align: 'center' });
-      yPosition += 15;
+      doc.text('RELATÓRIO DO EVENTO', 105, 15, { align: 'center' });
 
-      // Event Details
-      doc.setFontSize(12);
+      // Data de extração
+      const now = new Date();
+      const extractionDate = now.toLocaleDateString('pt-BR');
+      const extractionTime = now.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Extraído de credenciamento.rr.sebrae.com.br em ${extractionDate} às ${extractionTime}`,
+        105,
+        21,
+        { align: 'center' }
+      );
+
+      yPosition = 35;
+      doc.setTextColor(0, 0, 0);
+
+      // Event Details Section
+      doc.setFillColor(240, 240, 240);
+      doc.rect(15, yPosition - 5, 180, 8, 'F');
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 82, 147);
+      doc.text('INFORMAÇÕES DO EVENTO', 20, yPosition);
+      yPosition += 10;
+
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
 
       const eventDetails = [
         ['Nome do Evento:', event.nome || 'N/A'],
@@ -249,35 +292,66 @@ export default async function handler(req, res) {
         doc.setFont('helvetica', 'bold');
         doc.text(label, 20, yPosition);
         doc.setFont('helvetica', 'normal');
-        doc.text(value, 70, yPosition);
-        yPosition += 8;
+        doc.text(value, 65, yPosition);
+        yPosition += 7;
       });
 
-      yPosition += 10;
+      yPosition += 8;
 
-      // Statistics
+      // Statistics Section (apenas participantes bipados)
       if (includeStats && stats) {
-        doc.setFontSize(14);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(15, yPosition - 5, 180, 8, 'F');
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text('ESTATÍSTICAS', 20, yPosition);
+        doc.setTextColor(0, 82, 147);
+        doc.text('ESTATÍSTICAS - PARTICIPANTES BIPADOS', 20, yPosition);
         yPosition += 10;
 
-        doc.setFontSize(11);
-        const statsData = [
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(10);
+
+        const checkedInCount = parseInt(stats.checked_in) || 0;
+        const totalCheckins = parseInt(stats.total_checkins_sistema) || 0;
+
+        // Cards de estatísticas com destaque
+        const statsCards = [
+          { label: 'Participantes Bipados', value: checkedInCount, color: [76, 175, 80] },
+          { label: 'Check-ins pelo Sistema', value: totalCheckins, color: [33, 150, 243] },
+        ];
+
+        let xPos = 20;
+        statsCards.forEach((card) => {
+          doc.setFillColor(...card.color);
+          doc.roundedRect(xPos, yPosition, 80, 18, 3, 3, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.text(card.label, xPos + 40, yPosition + 7, { align: 'center' });
+          doc.setFontSize(16);
+          doc.text(String(card.value), xPos + 40, yPosition + 14, { align: 'center' });
+          xPos += 90;
+        });
+
+        yPosition += 25;
+        doc.setTextColor(0, 0, 0);
+
+        // Outros dados
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        const otherStats = [
           ['Total de Participantes:', parseInt(stats.total_participants) || 0],
-          ['Credenciados:', parseInt(stats.checked_in) || 0],
           ['Confirmados:', parseInt(stats.credenciados) || 0],
           ['Pendentes:', parseInt(stats.pendentes) || 0],
           ['Cancelados:', parseInt(stats.cancelados) || 0],
-          ['Total de Check-ins:', parseInt(stats.total_checkins) || 0],
         ];
 
-        statsData.forEach(([label, value]) => {
+        otherStats.forEach(([label, value]) => {
           doc.setFont('helvetica', 'bold');
           doc.text(label, 20, yPosition);
           doc.setFont('helvetica', 'normal');
-          doc.text(String(value), 90, yPosition);
-          yPosition += 7;
+          doc.text(String(value), 75, yPosition);
+          yPosition += 6;
         });
 
         yPosition += 10;
@@ -287,15 +361,18 @@ export default async function handler(req, res) {
       if (includeParticipants && participants.length > 0) {
         console.log('[EXPORT] Adding participants table...');
         // Add new page if needed
-        if (yPosition > 250) {
+        if (yPosition > 220) {
           doc.addPage();
           yPosition = 20;
         }
 
-        doc.setFontSize(14);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(15, yPosition - 5, 180, 8, 'F');
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 82, 147);
         doc.text('LISTA DE PARTICIPANTES', 20, yPosition);
-        yPosition += 10;
+        yPosition += 8;
 
         const tableData = participants.map((p) => [
           anonymize ? maskName(p.nome) : p.nome,
@@ -303,9 +380,7 @@ export default async function handler(req, res) {
           anonymize ? maskEmail(p.email) : p.email || 'N/A',
           p.fonte || 'N/A',
           translateStatus(p.status_credenciamento),
-          p.data_check_in
-            ? new Date(p.data_check_in).toLocaleDateString('pt-BR')
-            : 'Não credenciado',
+          p.data_check_in ? new Date(p.data_check_in).toLocaleDateString('pt-BR') : 'Não bipado',
         ]);
 
         autoTable(doc, {
@@ -314,22 +389,41 @@ export default async function handler(req, res) {
           body: tableData,
           styles: {
             fontSize: 8,
-            cellPadding: 2,
+            cellPadding: 3,
+            lineColor: [220, 220, 220],
+            lineWidth: 0.1,
           },
           headStyles: {
-            fillColor: [68, 114, 196],
+            fillColor: [0, 82, 147],
             textColor: 255,
             fontStyle: 'bold',
+            fontSize: 9,
+            halign: 'center',
+          },
+          alternateRowStyles: {
+            fillColor: [245, 245, 245],
           },
           columnStyles: {
             0: { cellWidth: 40 },
-            1: { cellWidth: 30 },
+            1: { cellWidth: 28 },
             2: { cellWidth: 45 },
-            3: { cellWidth: 20 },
+            3: { cellWidth: 18 },
             4: { cellWidth: 25 },
-            5: { cellWidth: 25 },
+            5: { cellWidth: 24 },
           },
-          margin: { left: 10, right: 10 },
+          margin: { left: 15, right: 15 },
+          didDrawPage: (data) => {
+            // Footer em cada página
+            const pageCount = doc.internal.getNumberOfPages();
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(
+              `Página ${doc.internal.getCurrentPageInfo().pageNumber} de ${pageCount}`,
+              105,
+              285,
+              { align: 'center' }
+            );
+          },
         });
 
         console.log('[EXPORT] Participants table added successfully');
