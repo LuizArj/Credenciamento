@@ -1,7 +1,7 @@
 /**
  * API: Export Event Report
  * POST /api/admin/events/[id]/export
- * 
+ *
  * Exports event report to Excel or PDF format
  */
 
@@ -9,6 +9,11 @@ import { query } from '@/lib/config/database';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/pages/api/auth/[...nextauth]';
 import ExcelJS from 'exceljs';
+import { jsPDF } from 'jspdf';
+import autoTableLib from 'jspdf-autotable';
+
+// jspdf-autotable precisa ser chamado como função, não como método
+const autoTable = autoTableLib.default || autoTableLib;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -23,7 +28,20 @@ export default async function handler(req, res) {
     }
 
     const { id: eventId } = req.query;
-    const { format = 'excel', anonymize = false, includeParticipants = true, includeStats = true } = req.body;
+    const {
+      format = 'excel',
+      anonymize = false,
+      includeParticipants = true,
+      includeStats = true,
+    } = req.body;
+
+    console.log('[EXPORT] Request:', {
+      eventId,
+      format,
+      anonymize,
+      includeParticipants,
+      includeStats,
+    });
 
     if (!eventId) {
       return res.status(400).json({ success: false, message: 'Event ID is required' });
@@ -93,17 +111,23 @@ export default async function handler(req, res) {
     // Generate Excel (only format supported for now)
     if (format === 'excel') {
       const workbook = new ExcelJS.Workbook();
-      
+
       // Sheet 1: Event Overview
       const overviewSheet = workbook.addWorksheet('Visão Geral');
-      
+
       // Event info section
       overviewSheet.addRow(['RELATÓRIO DO EVENTO']);
       overviewSheet.addRow([]);
       overviewSheet.addRow(['Nome do Evento', event.nome]);
       overviewSheet.addRow(['Código SAS', event.codevento_sas || 'N/A']);
-      overviewSheet.addRow(['Data Início', event.data_inicio ? new Date(event.data_inicio).toLocaleDateString('pt-BR') : 'N/A']);
-      overviewSheet.addRow(['Data Fim', event.data_fim ? new Date(event.data_fim).toLocaleDateString('pt-BR') : 'N/A']);
+      overviewSheet.addRow([
+        'Data Início',
+        event.data_inicio ? new Date(event.data_inicio).toLocaleDateString('pt-BR') : 'N/A',
+      ]);
+      overviewSheet.addRow([
+        'Data Fim',
+        event.data_fim ? new Date(event.data_fim).toLocaleDateString('pt-BR') : 'N/A',
+      ]);
       overviewSheet.addRow(['Local', event.local || 'N/A']);
       overviewSheet.addRow(['Cidade', event.cidade || 'N/A']);
       overviewSheet.addRow(['Status', event.status]);
@@ -129,11 +153,20 @@ export default async function handler(req, res) {
       // Sheet 2: Participants
       if (includeParticipants && participants.length > 0) {
         const participantsSheet = workbook.addWorksheet('Participantes');
-        
+
         // Header row
-        const headers = ['Nome', 'CPF', 'Email', 'Telefone', 'Fonte', 'Status', 'Data Check-in', 'Data Inscrição'];
+        const headers = [
+          'Nome',
+          'CPF',
+          'Email',
+          'Telefone',
+          'Fonte',
+          'Status',
+          'Data Check-in',
+          'Data Inscrição',
+        ];
         participantsSheet.addRow(headers);
-        
+
         // Style header
         const headerRow = participantsSheet.getRow(1);
         headerRow.font = { bold: true };
@@ -145,7 +178,7 @@ export default async function handler(req, res) {
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
 
         // Data rows
-        participants.forEach(p => {
+        participants.forEach((p) => {
           const row = [
             anonymize ? maskName(p.nome) : p.nome,
             anonymize ? maskCPF(p.cpf) : formatCPF(p.cpf),
@@ -160,7 +193,7 @@ export default async function handler(req, res) {
         });
 
         // Auto-fit columns
-        participantsSheet.columns.forEach(column => {
+        participantsSheet.columns.forEach((column) => {
           column.width = 20;
         });
       }
@@ -169,30 +202,168 @@ export default async function handler(req, res) {
       const buffer = await workbook.xlsx.writeBuffer();
 
       // Set headers and send
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="evento-${event.codevento_sas || eventId}-${Date.now()}.xlsx"`);
-      
-      return res.send(buffer);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="evento-${event.codevento_sas || eventId}-${Date.now()}.xlsx"`
+      );
 
+      return res.send(buffer);
     } else if (format === 'pdf') {
-      // PDF generation not implemented yet
-      return res.status(501).json({
-        success: false,
-        message: 'PDF export not implemented yet. Use Excel format.',
+      console.log('[EXPORT] Generating PDF report...');
+
+      // Generate PDF report
+      const doc = new jsPDF();
+      let yPosition = 20;
+
+      // Title
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RELATÓRIO DO EVENTO', 105, yPosition, { align: 'center' });
+      yPosition += 15;
+
+      // Event Details
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+
+      const eventDetails = [
+        ['Nome do Evento:', event.nome || 'N/A'],
+        ['Código SAS:', event.codevento_sas || 'N/A'],
+        [
+          'Data Início:',
+          event.data_inicio ? new Date(event.data_inicio).toLocaleDateString('pt-BR') : 'N/A',
+        ],
+        [
+          'Data Fim:',
+          event.data_fim ? new Date(event.data_fim).toLocaleDateString('pt-BR') : 'N/A',
+        ],
+        ['Local:', event.local || 'N/A'],
+        ['Cidade:', event.cidade || 'N/A'],
+        ['Status:', event.status || 'N/A'],
+      ];
+
+      eventDetails.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, 20, yPosition);
+        doc.setFont('helvetica', 'normal');
+        doc.text(value, 70, yPosition);
+        yPosition += 8;
       });
+
+      yPosition += 10;
+
+      // Statistics
+      if (includeStats && stats) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('ESTATÍSTICAS', 20, yPosition);
+        yPosition += 10;
+
+        doc.setFontSize(11);
+        const statsData = [
+          ['Total de Participantes:', parseInt(stats.total_participants) || 0],
+          ['Credenciados:', parseInt(stats.checked_in) || 0],
+          ['Confirmados:', parseInt(stats.credenciados) || 0],
+          ['Pendentes:', parseInt(stats.pendentes) || 0],
+          ['Cancelados:', parseInt(stats.cancelados) || 0],
+          ['Total de Check-ins:', parseInt(stats.total_checkins) || 0],
+        ];
+
+        statsData.forEach(([label, value]) => {
+          doc.setFont('helvetica', 'bold');
+          doc.text(label, 20, yPosition);
+          doc.setFont('helvetica', 'normal');
+          doc.text(String(value), 90, yPosition);
+          yPosition += 7;
+        });
+
+        yPosition += 10;
+      }
+
+      // Participants Table
+      if (includeParticipants && participants.length > 0) {
+        console.log('[EXPORT] Adding participants table...');
+        // Add new page if needed
+        if (yPosition > 250) {
+          doc.addPage();
+          yPosition = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('LISTA DE PARTICIPANTES', 20, yPosition);
+        yPosition += 10;
+
+        const tableData = participants.map((p) => [
+          anonymize ? maskName(p.nome) : p.nome,
+          anonymize ? maskCPF(p.cpf) : formatCPF(p.cpf),
+          anonymize ? maskEmail(p.email) : p.email || 'N/A',
+          p.fonte || 'N/A',
+          translateStatus(p.status_credenciamento),
+          p.data_check_in
+            ? new Date(p.data_check_in).toLocaleDateString('pt-BR')
+            : 'Não credenciado',
+        ]);
+
+        autoTable(doc, {
+          startY: yPosition,
+          head: [['Nome', 'CPF', 'Email', 'Fonte', 'Status', 'Check-in']],
+          body: tableData,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2,
+          },
+          headStyles: {
+            fillColor: [68, 114, 196],
+            textColor: 255,
+            fontStyle: 'bold',
+          },
+          columnStyles: {
+            0: { cellWidth: 40 },
+            1: { cellWidth: 30 },
+            2: { cellWidth: 45 },
+            3: { cellWidth: 20 },
+            4: { cellWidth: 25 },
+            5: { cellWidth: 25 },
+          },
+          margin: { left: 10, right: 10 },
+        });
+
+        console.log('[EXPORT] Participants table added successfully');
+      }
+
+      console.log('[EXPORT] Generating PDF buffer...');
+      // Generate PDF buffer
+      const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+
+      console.log('[EXPORT] PDF buffer generated, size:', pdfBuffer.length);
+
+      // Set headers and send
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="evento-${event.codevento_sas || eventId}-${Date.now()}.pdf"`
+      );
+
+      console.log('[EXPORT] Sending PDF response...');
+      return res.send(pdfBuffer);
     } else {
       return res.status(400).json({
         success: false,
         message: 'Invalid format. Use "excel" or "pdf".',
       });
     }
-
   } catch (error) {
-    console.error('Error exporting event report:', error);
+    console.error('[EXPORT] Error exporting event report:', error);
+    console.error('[EXPORT] Error stack:', error.stack);
     return res.status(500).json({
       success: false,
       message: 'Failed to export event report',
       error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 }
@@ -231,11 +402,11 @@ function maskPhone(phone) {
 
 function translateStatus(status) {
   const translations = {
-    'pending': 'Pendente',
-    'confirmed': 'Confirmado',
-    'checked_in': 'Credenciado',
-    'cancelled': 'Cancelado',
-    'waiting_list': 'Lista de Espera',
+    pending: 'Pendente',
+    confirmed: 'Confirmado',
+    checked_in: 'Credenciado',
+    cancelled: 'Cancelado',
+    waiting_list: 'Lista de Espera',
   };
   return translations[status] || status;
 }

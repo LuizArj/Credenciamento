@@ -194,7 +194,8 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Erro ao exportar relatório');
+        const errorData = await response.json().catch(() => ({ message: 'Erro desconhecido' }));
+        throw new Error(errorData.message || `Erro ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -208,7 +209,9 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Export error:', err);
-      alert('Erro ao exportar relatório');
+      alert(
+        `Erro ao exportar relatório: ${err instanceof Error ? err.message : 'Erro desconhecido'}`
+      );
     }
   };
 
