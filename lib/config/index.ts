@@ -1,6 +1,6 @@
 /**
  * Configurações centralizadas da aplicação
- * 
+ *
  * @module lib/config
  * @description Ponto de entrada único para todas as configurações da aplicação
  */
@@ -12,7 +12,6 @@ export {
   isDev,
   isTest,
   appConfig,
-  supabaseConfig,
   authConfig,
   apiConfig,
   securityConfig,
@@ -21,5 +20,3 @@ export {
 } from './env';
 // Database helpers (Postgres)
 export { db, query, withTransaction } from './database';
-
-// Note: Supabase client exports removed from default config to prefer Postgres `db` on server-side.

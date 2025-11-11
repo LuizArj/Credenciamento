@@ -1,5 +1,5 @@
 -- Schema principal do sistema de credenciamento
--- Execute este arquivo PRIMEIRO no Supabase
+-- Execute este arquivo PRIMEIRO no PostgreSQL
 
 -- Habilitar extensões necessárias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

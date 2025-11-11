@@ -5,7 +5,9 @@
 O sistema agora opera com **três níveis de acesso**:
 
 ### 🟢 Manager (Gerente) - Role Padrão
+
 Usuários que fazem login via Keycloak recebem **automaticamente** a role `manager` e podem:
+
 - ✅ **Dashboard** (`/admin`)
 - ✅ **Eventos** (`/admin/events`)
 - ✅ **Participantes** (`/admin/participants`)
@@ -13,7 +15,9 @@ Usuários que fazem login via Keycloak recebem **automaticamente** a role `manag
 - ✅ **Ver módulo Admin** na tela inicial
 
 ### 🔴 Admin (Administrador)
+
 Somente usuários com role `admin` podem acessar:
+
 - ⚠️ **Permissões** (`/admin/permissions`)
 - ⚠️ **Gerenciar Usuários** (`/api/admin/users`)
 - ⚠️ **Gerenciar Roles** (`/api/admin/roles`)
@@ -21,7 +25,9 @@ Somente usuários com role `admin` podem acessar:
 - ✅ Todas as funcionalidades de Manager
 
 ### 🟡 Operator (Operador)
+
 Usuários com role `operator` (uso futuro):
+
 - ❌ **NÃO pode acessar** módulo de Administração
 - ✅ Pode acessar outras funcionalidades do sistema (credenciamento, QR Code, etc.)
 - ❌ **Módulo Admin não aparece** na tela inicial
@@ -31,12 +37,14 @@ Usuários com role `operator` (uso futuro):
 ## 🔧 Como o Sistema Funciona
 
 ### 1. **Autenticação** (`pages/api/auth/[...nextauth].js`)
+
 - Usuários fazem login via Keycloak
 - **Novo usuário** = registrado automaticamente com role `manager`
 - Sistema busca as **roles** do usuário no banco de dados PostgreSQL
 - Roles são armazenadas no token JWT da sessão
 
 ### 2. **Middleware** (`middleware.ts`)
+
 - Verifica se o usuário está autenticado
 - **Operators** são bloqueados de acessar `/admin` e `/api/admin`
 - Para rotas `/api/admin/permissions`, `/api/admin/users`, `/api/admin/roles`:
@@ -47,6 +55,7 @@ Usuários com role `operator` (uso futuro):
   - ❌ Bloqueia `operator`
 
 ### 3. **API Protection** (`utils/api-auth.js`)
+
 - Função `withApiAuth()` protege endpoints da API
 - Verifica permissões baseadas em:
   - **Role do usuário** (admin, manager, operator)
@@ -55,6 +64,7 @@ Usuários com role `operator` (uso futuro):
 - Managers têm acesso a eventos, participantes e dashboard
 
 ### 4. **Tela Inicial** (`pages/index.js`)
+
 - Módulo "Administração" **só aparece** para usuários com role `admin` ou `manager`
 - Operators **não veem** o botão de Administração
 - Filtro dinâmico baseado nas roles do usuário
@@ -71,15 +81,16 @@ Usuários com role `operator` (uso futuro):
    - Marque a checkbox da role `admin` para o usuário desejado
 
 2. **Opção 2: Via SQL Direto** (pgAdmin)
+
    ```sql
    -- 1. Verificar se o usuário existe
    SELECT id, username, email FROM credenciamento_admin_users WHERE email = 'usuario@example.com';
-   
+
    -- 2. Se não existir, criar o usuário
    INSERT INTO credenciamento_admin_users (username, email, keycloak_id, created_at, updated_at)
    VALUES ('usuario@example.com', 'usuario@example.com', NULL, NOW(), NOW())
    RETURNING id;
-   
+
    -- 3. Atribuir role admin (substitua USER_ID pelo id retornado)
    INSERT INTO credenciamento_admin_user_roles (user_id, role_id, created_at)
    SELECT 123, id, NOW()  -- Substitua 123 pelo USER_ID
@@ -160,11 +171,11 @@ GROUP BY r.name;
 
 ## 🔒 Roles Disponíveis
 
-| Role | Descrição | Permissões | Auto-atribuída? |
-|------|-----------|-----------|-----------------|
-| **admin** | Administrador | Acesso total ao sistema, incluindo gerenciamento de usuários e permissões | ❌ Manual |
-| **manager** | Gerente | Gerenciar eventos e participantes, visualizar dashboard e métricas | ✅ Sim (login) |
-| **operator** | Operador | Acesso apenas a credenciamento e QR Code (não acessa admin) | ❌ Manual |
+| Role         | Descrição     | Permissões                                                                | Auto-atribuída? |
+| ------------ | ------------- | ------------------------------------------------------------------------- | --------------- |
+| **admin**    | Administrador | Acesso total ao sistema, incluindo gerenciamento de usuários e permissões | ❌ Manual       |
+| **manager**  | Gerente       | Gerenciar eventos e participantes, visualizar dashboard e métricas        | ✅ Sim (login)  |
+| **operator** | Operador      | Acesso apenas a credenciamento e QR Code (não acessa admin)               | ❌ Manual       |
 
 **Nota:** Ao fazer o primeiro login via Keycloak, o usuário recebe automaticamente a role `manager`.
 
@@ -173,14 +184,17 @@ GROUP BY r.name;
 ## 🚀 Testando o Sistema
 
 ### 1. Como usuário comum (sem role admin):
+
 - ✅ Deve acessar: Dashboard, Eventos, Participantes
 - ❌ Deve ver "Acesso Restrito" em: Permissões
 
 ### 2. Como administrador:
+
 - ✅ Deve acessar: Todas as páginas
 - ✅ Deve conseguir gerenciar permissões de outros usuários
 
 ### 3. Verificar logs:
+
 ```powershell
 # No terminal onde o Next.js está rodando
 # Você verá logs como:
@@ -193,18 +207,22 @@ API Auth: Verificando permissões...
 ## 🐛 Troubleshooting
 
 ### Erro: "Acesso restrito a administradores"
+
 - **Causa:** Usuário não tem role `admin`
 - **Solução:** Adicione a role via SQL ou peça para um admin adicionar via interface
 
 ### Erro: "Você não tem permissão para acessar esta página"
+
 - **Causa:** Middleware bloqueou o acesso
 - **Solução:** Verifique se o usuário está logado e tem as permissões corretas
 
 ### Usuário não consegue acessar nenhuma página admin
+
 - **Causa:** Usuário não está autenticado ou sessão expirou
 - **Solução:** Faça logout e login novamente
 
 ### Mudanças de permissão não aplicam imediatamente
+
 - **Causa:** Token JWT em cache
 - **Solução:** Faça logout e login novamente para renovar o token
 

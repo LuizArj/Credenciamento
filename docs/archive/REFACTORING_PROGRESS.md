@@ -11,6 +11,7 @@
 ### 1. ✅ Estrutura de Pastas e Schemas
 
 **Criado:**
+
 - ✅ `/schemas` - Validações Zod
   - `event.schema.ts` - Schemas completos de eventos (Event, EventCreate, EventUpdate, EventFilter, SASEvent)
   - `participant.schema.ts` - Schemas de participantes (Participant, ParticipantCreate, ParticipantUpdate, ParticipantFilter, SASParticipant)
@@ -31,6 +32,7 @@
 - ✅ `/lib/export` - Funções de exportação (pasta criada)
 
 **Pacotes Instalados:**
+
 - ✅ `zod@latest` - Validação de schemas
 
 ---
@@ -40,13 +42,15 @@
 **Arquivo:** `services/sas.service.ts`
 
 **Funcionalidades Implementadas:**
+
 - ✅ `fetchEvent(codEvento)` - Busca evento no SAS com busca inteligente por ano
 - ✅ `fetchParticipants(codEvento)` - Busca participantes de um evento
-- ✅ `syncEventToSupabase(eventData)` - Sincroniza evento para o banco
-- ✅ `syncParticipantsToSupabase(eventId, participants)` - Sincroniza participantes
+- ✅ `syncEventToDatabase(eventData)` - Sincroniza evento para o banco
+- ✅ `syncParticipantsToDatabase(eventId, participants)` - Sincroniza participantes
 - ✅ `syncCompleteEvent(codEvento)` - Sincronização completa (evento + participantes)
 
 **Destaques:**
+
 - ✅ TypeScript 100%
 - ✅ Tratamento de erros robusto
 - ✅ Logs estruturados
@@ -63,6 +67,7 @@
 **Funcionalidades Implementadas:**
 
 #### Eventos:
+
 - ✅ `getEvents(filters)` - Busca com filtros e paginação
 - ✅ `getEventById(eventId)` - Busca evento específico
 - ✅ `getEventStats(eventId)` - Estatísticas detalhadas
@@ -71,6 +76,7 @@
 - ✅ `deleteEvent(eventId)` - Deletar evento
 
 #### Participantes:
+
 - ✅ `getParticipants(filters)` - Busca com filtros e paginação
 - ✅ `getParticipantById(participantId)` - Busca participante específico
 - ✅ `getParticipantHistory(cpf)` - Histórico de eventos
@@ -81,6 +87,7 @@
 - ✅ `checkInParticipant(participantId)` - Check-in
 
 **Destaques:**
+
 - ✅ TypeScript 100%
 - ✅ Singleton instances (público e admin)
 - ✅ Paginação automática
@@ -89,6 +96,233 @@
 
 ---
 
+### 4. ✅ APIs de Relatórios (TypeScript + Zod)
+
+#### API: Event Report
+
+**Arquivo:** `pages/api/admin/events/[id]/report.ts`
+
+**Features:**
+
+- ✅ GET `/api/admin/events/[id]/report`
+- ✅ Validação com Zod (eventReportQuerySchema)
+- ✅ Autenticação e autorização (admin/manager)
+- ✅ Retorna: evento, estatísticas, participantes (opcional), gráficos
+- ✅ Códigos HTTP apropriados (200, 401, 403, 404, 405, 500)
+- ✅ Tratamento de erros específico
+- ✅ Logs estruturados
+
+**Query Params:**
+
+- `includeParticipants` (boolean, default: true)
+- `includeStats` (boolean, default: true)
+- `startDate` (datetime, optional)
+- `endDate` (datetime, optional)
+
+---
+
+#### API: Sync Event from SAS
+
+**Arquivo:** `pages/api/admin/events/[id]/sync-sas.ts`
+
+**Features:**
+
+- ✅ POST `/api/admin/events/[id]/sync-sas`
+- ✅ Validação com Zod (syncRequestSchema)
+- ✅ Autenticação e autorização (admin/manager)
+- ✅ Sincronização completa ou apenas evento
+- ✅ Opção de overwrite
+- ✅ Retorna: eventId, dados do evento, resultado da sincronização
+- ✅ Tratamento de erros específico
+
+**Request Body:**
+
+```typescript
+{
+  codEvento: string,      // Código do evento no SAS
+  overwrite: boolean,     // Sobrescrever dados existentes
+  includeParticipants: boolean  // Incluir participantes
+}
+```
+
+---
+
+#### API: Participant Report
+
+**Arquivo:** `pages/api/admin/participants/[id]/report.ts`
+
+**Features:**
+
+- ✅ GET `/api/admin/participants/[id]/report`
+- ✅ Validação com Zod (participantReportQuerySchema)
+- ✅ Autenticação e autorização (admin/manager/operator)
+- ✅ Retorna: participante, evento, histórico, estatísticas
+- ✅ Códigos HTTP apropriados
+- ✅ Tratamento de erros específico
+
+**Query Params:**
+
+- `includeEvents` (boolean, default: true)
+- `includeHistory` (boolean, default: true)
+- `startDate` (datetime, optional)
+- `endDate` (datetime, optional)
+
+---
+
 ## 🔄 Próximas Tarefas (5/8 restantes)
 
-... (arquivo arquivado)
+### 5. ⏳ Criar Componentes de Relatório Reutilizáveis
+
+**Componentes a criar:**
+
+- [ ] `EventReportPanel.tsx` - Painel de relatório de evento
+- [ ] `ParticipantReportPanel.tsx` - Painel de relatório de participante
+- [ ] `ExportButton.tsx` - Botão de exportação (Excel/PDF)
+- [ ] `FilterBar.tsx` - Barra de filtros reutilizável
+- [ ] `StatsCard.tsx` - Card de estatística
+- [ ] `ChartContainer.tsx` - Container para gráficos
+
+**Bibliotecas necessárias:**
+
+- [ ] `recharts` - Para gráficos
+- [ ] `xlsx` - Para exportação Excel
+- [ ] `jspdf` - Para exportação PDF
+
+---
+
+# Arquivo arquivado: REFACTORING_PROGRESS
+
+Este arquivo foi movido para `docs/archive/REFACTORING_PROGRESS.md`.
+Consulte a cópia arquivada para o conteúdo completo.
+
+---
+
+## 🎯 Próximos Passos Imediatos
+
+1. **Instalar dependências de exportação:**
+
+   ```bash
+   npm install xlsx jspdf jspdf-autotable recharts
+   ```
+
+2. **Criar componentes reutilizáveis:**
+   - Começar com `FilterBar.tsx`
+   - Depois `StatsCard.tsx`
+   - Por fim, painéis de relatório
+
+3. **Refatorar página de eventos:**
+   - Migrar para TypeScript
+   - Implementar integração com novas APIs
+   - Adicionar UI de relatórios
+
+4. **Testar APIs criadas:**
+
+   ```bash
+   # Testar relatório de evento
+   curl http://localhost:3000/api/admin/events/[id]/report
+
+   # Testar sincronização SAS
+   curl -X POST http://localhost:3000/api/admin/events/[id]/sync-sas \
+     -d '{"codEvento": "123", "includeParticipants": true}'
+
+   # Testar relatório de participante
+   curl http://localhost:3000/api/admin/participants/[id]/report
+   ```
+
+---
+
+## 📝 Notas Técnicas
+
+### Integração SAS
+
+O serviço SAS agora:
+
+- Busca eventos em múltiplos anos automaticamente
+- Converte datas brasileiras (DD/MM/YYYY) para ISO
+- Mapeia campos do SAS para o padrão do sistema
+- Trata erros de forma granular
+- Suporta sincronização completa ou parcial
+
+### Supabase Service
+
+O serviço Supabase:
+
+- Centraliza todas as operações de banco
+- Suporta filtros avançados e paginação
+- Calcula estatísticas automaticamente
+- Tem duas instâncias (pública e admin)
+- Usa tipos TypeScript do Supabase
+
+### APIs de Relatórios
+
+As APIs seguem o padrão do STYLE_GUIDE.md:
+
+1. Validação de método HTTP (405)
+2. Autenticação (401)
+3. Autorização (403)
+4. Validação de request com Zod (400)
+5. Business logic com try/catch
+6. Tratamento de erros específico
+7. Respostas JSON consistentes
+
+---
+
+## 🔗 Arquitetura
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         FRONTEND                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Eventos    │  │ Participantes│  │  Relatórios  │     │
+│  │   Page       │  │    Page      │  │   Modals     │     │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
+│         │                  │                  │             │
+│         └──────────────────┴──────────────────┘             │
+│                            │                                │
+└────────────────────────────┼────────────────────────────────┘
+                             │
+┌────────────────────────────┼────────────────────────────────┐
+│                         APIs                                │
+│         ┌──────────────────┴──────────────────┐            │
+│         │                                      │            │
+│  ┌──────▼───────┐                     ┌───────▼──────┐     │
+│  │ Event Report │                     │Participant   │     │
+│  │     API      │                     │ Report API   │     │
+│  └──────┬───────┘                     └───────┬──────┘     │
+│         │                                     │            │
+│  ┌──────▼───────┐                                          │
+│  │  Sync SAS    │                                          │
+│  │     API      │                                          │
+│  └──────┬───────┘                                          │
+└─────────┼──────────────────────────────────────────────────┘
+          │
+┌─────────┼──────────────────────────────────────────────────┐
+│                       SERVICES                              │
+│         │                                                   │
+│  ┌──────▼─────────┐              ┌──────────────┐         │
+│  │  SAS Service   │              │   Supabase   │         │
+│  │                │              │   Service    │         │
+│  │ • fetchEvent   │              │              │         │
+│  │ • fetchParts   │◄─────────────┤ • getEvents  │         │
+│  │ • syncToSupabase              │ • getParts   │         │
+│  └────────────────┘              │ • getStats   │         │
+│                                  └──────┬───────┘         │
+└─────────────────────────────────────────┼─────────────────┘
+                                          │
+┌─────────────────────────────────────────┼─────────────────┐
+│                       DATABASE                             │
+│                                  ┌──────▼───────┐         │
+│                                  │   Supabase   │         │
+│                                  │ PostgreSQL   │         │
+│                                  │              │         │
+│                                  │ • events     │         │
+│                                  │ • participants        │
+│                                  └──────────────┘         │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**Última atualização:** 2025-10-10  
+**Progresso:** 37.5% (3/8 tarefas concluídas)  
+**Próxima sessão:** Criar componentes de relatório e instalar dependências de exportação

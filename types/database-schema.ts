@@ -1,7 +1,7 @@
 /**
  * Database Schema Documentation
  *
- * Este arquivo documenta o schema real do banco de dados Supabase
+ * Este arquivo documenta o schema real do banco de dados PostgreSQL
  * para facilitar o desenvolvimento e manutenção do código.
  *
  * IMPORTANTE: Este é o schema REAL do banco. Não usar campos que não existem aqui.

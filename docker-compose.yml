@@ -4,7 +4,7 @@ services:
   # 'app' é só um nome que você escolhe
   app:
     # Usa a imagem que você buildou
-    image: projeto-credenciamento:v1.1.0
+    image: projeto-credenciamento:v1.1.1
     
     # Carrega o seu arquivo .env.local
     env_file:

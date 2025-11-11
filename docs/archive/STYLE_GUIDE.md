@@ -9,6 +9,7 @@
 ### Versões Atuais (package.json)
 
 #### ✅ Dependências Principais (Atualizadas)
+
 - **Next.js:** `^14.2.33` ✅ (Última stable: 14.2.x)
 - **React:** `^18` ✅ (Última stable: 18.3.x)
 - **React DOM:** `^18` ✅
@@ -19,10 +20,10 @@
 - **NextAuth.js:** `^4.24.11` ✅ (Última v4 stable)
 
 #### ⚠️ Dependências com Atenção
+
 - **@types/react:** `^19.1.13` ⚠️
   - **Problema:** React 19 ainda está em RC (Release Candidate)
   - **Recomendação:** Usar `@types/react@^18.3.0` para compatibilidade com React 18
-  
 - **@types/react-dom:** `^19.1.9` ⚠️
   - **Problema:** React DOM 19 ainda está em RC
   - **Recomendação:** Usar `@types/react-dom@^18.3.0`
@@ -50,20 +51,21 @@ npm update
 
 ### 📊 Resumo de Dependências
 
-| Categoria | Status | Observação |
-|-----------|--------|------------|
-| Framework (Next.js/React) | ✅ Excelente | Versões estáveis e atualizadas |
-| Database (Supabase) | ✅ Excelente | Versão mais recente |
-| State Management (React Query) | ✅ Excelente | v5 com melhorias |
-| Auth (NextAuth) | ✅ Bom | v4 stable (considerar migração futura para Auth.js v5) |
-| Types (TypeScript/Node) | ⚠️ Ajustar | Incompatibilidade de versões |
-| Styling (Tailwind) | ✅ Excelente | Versão stable |
+| Categoria                      | Status       | Observação                                             |
+| ------------------------------ | ------------ | ------------------------------------------------------ |
+| Framework (Next.js/React)      | ✅ Excelente | Versões estáveis e atualizadas                         |
+| Database (Supabase)            | ✅ Excelente | Versão mais recente                                    |
+| State Management (React Query) | ✅ Excelente | v5 com melhorias                                       |
+| Auth (NextAuth)                | ✅ Bom       | v4 stable (considerar migração futura para Auth.js v5) |
+| Types (TypeScript/Node)        | ⚠️ Ajustar   | Incompatibilidade de versões                           |
+| Styling (Tailwind)             | ✅ Excelente | Versão stable                                          |
 
 ---
 
 ## 📝 2. Padrões de Nomenclatura
 
 ### Componentes React
+
 - **Formato:** `PascalCase`
 - **Extensão:** `.tsx` (TypeScript) ou `.jsx`
 - **Exemplos:**
@@ -78,6 +80,7 @@ npm update
   ```
 
 ### Páginas e APIs
+
 - **Formato:** `kebab-case`
 - **Extensão:** `.js`, `.ts`, `.tsx`
 - **Exemplos:**
@@ -92,6 +95,7 @@ npm update
   ```
 
 ### Hooks Personalizados
+
 - **Formato:** `use` + `PascalCase`
 - **Extensão:** `.ts` ou `.tsx`
 - **Exemplos:**
@@ -104,6 +108,7 @@ npm update
   ```
 
 ### Utilitários e Helpers
+
 - **Formato:** `camelCase` ou `kebab-case`
 - **Extensão:** `.js` ou `.ts`
 - **Exemplos:**
@@ -116,6 +121,7 @@ npm update
   ```
 
 ### Tipos TypeScript
+
 - **Formato:** `PascalCase`
 - **Arquivos:** `kebab-case.types.ts` ou em `types/index.ts`
 - **Exemplos:**
@@ -128,6 +134,7 @@ npm update
   ```
 
 ### Variáveis e Funções
+
 - **Formato:** `camelCase`
 - **Constantes:** `UPPER_SNAKE_CASE`
 - **Exemplos:**
@@ -148,7 +155,7 @@ npm update
 ```tsx
 /**
  * ParticipantTable Component
- * 
+ *
  * @description Exibe uma tabela de participantes com filtro e ações
  * @author Seu Nome
  * @version 1.0.0
@@ -210,10 +217,11 @@ export const ParticipantTable: FC<ParticipantTableProps> = ({
     // Aplicar filtro de busca
     if (enableFilter && searchTerm.trim()) {
       const search = searchTerm.toLowerCase();
-      filtered = participants.filter(p =>
-        p.nome.toLowerCase().includes(search) ||
-        p.email.toLowerCase().includes(search) ||
-        p.cpf.includes(search)
+      filtered = participants.filter(
+        (p) =>
+          p.nome.toLowerCase().includes(search) ||
+          p.email.toLowerCase().includes(search) ||
+          p.cpf.includes(search)
       );
     }
 
@@ -221,7 +229,7 @@ export const ParticipantTable: FC<ParticipantTableProps> = ({
     return [...filtered].sort((a, b) => {
       const aValue = a[sortColumn] || '';
       const bValue = b[sortColumn] || '';
-      
+
       if (sortDirection === 'asc') {
         return aValue > bValue ? 1 : -1;
       }
@@ -232,18 +240,24 @@ export const ParticipantTable: FC<ParticipantTableProps> = ({
   // --------------------------------------------------------------------------
   // HANDLERS
   // --------------------------------------------------------------------------
-  const handleSort = useCallback((column: keyof Participant) => {
-    if (sortColumn === column) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  }, [sortColumn]);
+  const handleSort = useCallback(
+    (column: keyof Participant) => {
+      if (sortColumn === column) {
+        setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortColumn(column);
+        setSortDirection('asc');
+      }
+    },
+    [sortColumn]
+  );
 
-  const handleRowClick = useCallback((participant: Participant) => {
-    onRowClick?.(participant);
-  }, [onRowClick]);
+  const handleRowClick = useCallback(
+    (participant: Participant) => {
+      onRowClick?.(participant);
+    },
+    [onRowClick]
+  );
 
   // --------------------------------------------------------------------------
   // RENDER STATES
@@ -260,8 +274,18 @@ export const ParticipantTable: FC<ParticipantTableProps> = ({
   if (participants.length === 0) {
     return (
       <div className={`text-center py-12 ${className}`}>
-        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        <svg
+          className="mx-auto h-12 w-12 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+          />
         </svg>
         <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum participante</h3>
         <p className="mt-1 text-sm text-gray-500">Não há participantes cadastrados ainda.</p>
@@ -286,8 +310,18 @@ export const ParticipantTable: FC<ParticipantTableProps> = ({
               className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               aria-label="Buscar participantes"
             />
-            <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <svg
+              className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </div>
           <span className="text-sm text-gray-600">
@@ -315,13 +349,22 @@ export const ParticipantTable: FC<ParticipantTableProps> = ({
               >
                 Email {sortColumn === 'email' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                scope="col"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
                 CPF
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                scope="col"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
                 Telefone
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                scope="col"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
                 Empresa
               </th>
             </tr>
@@ -386,7 +429,7 @@ export default ParticipantTable;
 ```typescript
 /**
  * API Route: Load Participants
- * 
+ *
  * @route GET /api/admin/load-participants
  * @description Carrega participantes de um evento do sistema SAS
  * @auth Requer autenticação admin
@@ -462,10 +505,10 @@ function validateRequest(body: any): body is LoadParticipantsRequest {
 async function loadParticipantsFromSAS(eventId: string, sasCode: string) {
   // Lógica de negócio aqui
   const apiUrl = `https://sas.sebrae.com.br/api/eventos/${sasCode}/participantes`;
-  
+
   const response = await fetch(apiUrl, {
     headers: {
-      'Authorization': `Bearer ${process.env.SAS_API_KEY}`,
+      Authorization: `Bearer ${process.env.SAS_API_KEY}`,
       'Content-Type': 'application/json',
     },
   });
@@ -514,10 +557,7 @@ async function loadParticipantsFromSAS(eventId: string, sasCode: string) {
 // MAIN HANDLER
 // ============================================================================
 
-async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiResponse>
-) {
+async function handler(req: NextApiRequest, res: NextApiResponse<ApiResponse>) {
   // --------------------------------------------------------------------------
   // 1. METHOD VALIDATION
   // --------------------------------------------------------------------------
@@ -582,7 +622,9 @@ async function handler(
 
     const results = await loadParticipantsFromSAS(eventId, sasCode);
 
-    console.log(`Carregamento concluído: ${results.totalLoaded} salvos, ${results.totalSkipped} ignorados`);
+    console.log(
+      `Carregamento concluído: ${results.totalLoaded} salvos, ${results.totalSkipped} ignorados`
+    );
 
     // --------------------------------------------------------------------------
     // 5. SUCCESS RESPONSE
@@ -592,7 +634,6 @@ async function handler(
       data: results,
       message: `Carregamento concluído com sucesso. ${results.totalLoaded} participantes salvos.`,
     });
-
   } catch (error: any) {
     // --------------------------------------------------------------------------
     // 6. ERROR HANDLING
@@ -650,6 +691,7 @@ export default handler;
 ### Formato de Resposta Padrão
 
 #### Sucesso (200-299)
+
 ```typescript
 {
   "success": true,
@@ -659,6 +701,7 @@ export default handler;
 ```
 
 #### Erro (400-599)
+
 ```typescript
 {
   "success": false,
@@ -670,27 +713,28 @@ export default handler;
 
 ### Códigos HTTP Recomendados
 
-| Código | Uso | Exemplo |
-|--------|-----|---------|
-| 200 | Sucesso | Dados retornados com sucesso |
-| 201 | Criado | Novo recurso criado |
-| 400 | Bad Request | Dados inválidos no body |
-| 401 | Unauthorized | Sem autenticação |
-| 403 | Forbidden | Sem permissão |
-| 404 | Not Found | Recurso não encontrado |
-| 405 | Method Not Allowed | Método HTTP incorreto |
-| 409 | Conflict | Recurso já existe |
-| 422 | Unprocessable Entity | Validação falhou |
-| 429 | Too Many Requests | Rate limit excedido |
-| 500 | Internal Server Error | Erro inesperado |
-| 502 | Bad Gateway | Erro em API externa |
-| 503 | Service Unavailable | Serviço indisponível |
+| Código | Uso                   | Exemplo                      |
+| ------ | --------------------- | ---------------------------- |
+| 200    | Sucesso               | Dados retornados com sucesso |
+| 201    | Criado                | Novo recurso criado          |
+| 400    | Bad Request           | Dados inválidos no body      |
+| 401    | Unauthorized          | Sem autenticação             |
+| 403    | Forbidden             | Sem permissão                |
+| 404    | Not Found             | Recurso não encontrado       |
+| 405    | Method Not Allowed    | Método HTTP incorreto        |
+| 409    | Conflict              | Recurso já existe            |
+| 422    | Unprocessable Entity  | Validação falhou             |
+| 429    | Too Many Requests     | Rate limit excedido          |
+| 500    | Internal Server Error | Erro inesperado              |
+| 502    | Bad Gateway           | Erro em API externa          |
+| 503    | Service Unavailable   | Serviço indisponível         |
 
 ---
 
 ## 📁 5. Estrutura de Pastas Atual e Melhorias
 
 ### Estrutura Atual
+
 ```
 projeto-credenciamento/
 ├── components/          ✅ Componentes React
@@ -740,6 +784,7 @@ projeto-credenciamento/
 ### 🎯 Melhorias Propostas
 
 #### 1. **Criar pasta `/services`**
+
 Centralizar lógica de integração com APIs externas.
 
 ```
@@ -751,12 +796,14 @@ services/
 ```
 
 **Benefícios:**
+
 - Desacopla lógica de negócio das rotas API
 - Facilita testes unitários
 - Reutilização de código
 - Manutenção centralizada
 
 **Exemplo:**
+
 ```typescript
 // services/sas.service.ts
 export class SASService {
@@ -765,7 +812,7 @@ export class SASService {
 
   async getEventParticipants(sasCode: string) {
     const response = await fetch(`${this.baseUrl}/eventos/${sasCode}/participantes`, {
-      headers: { 'Authorization': `Bearer ${this.apiKey}` }
+      headers: { Authorization: `Bearer ${this.apiKey}` },
     });
     return response.json();
   }
@@ -779,6 +826,7 @@ export const sasService = new SASService();
 ```
 
 #### 2. **Criar pasta `/schemas`**
+
 Validações centralizadas com Zod.
 
 ```
@@ -790,11 +838,13 @@ schemas/
 ```
 
 **Benefícios:**
+
 - Validação consistente em frontend e backend
 - Type-safety automático
 - Documentação implícita
 
 **Exemplo:**
+
 ```typescript
 // schemas/participant.schema.ts
 import { z } from 'zod';
@@ -810,6 +860,7 @@ export type ParticipantInput = z.infer<typeof participantSchema>;
 ```
 
 #### 3. **Criar pasta `/constants`**
+
 Constantes compartilhadas.
 
 ```
@@ -821,6 +872,7 @@ constants/
 ```
 
 **Exemplo:**
+
 ```typescript
 // constants/routes.ts
 export const ROUTES = {
@@ -839,6 +891,7 @@ export const ROUTES = {
 ```
 
 #### 4. **Criar pasta `/tests`**
+
 Testes organizados.
 
 ```
@@ -854,6 +907,7 @@ tests/
 ```
 
 #### 5. **Refatorar `/lib`**
+
 Organizar melhor as bibliotecas.
 
 ```
@@ -871,6 +925,7 @@ lib/
 ```
 
 #### 6. **Padronizar `/types`**
+
 Melhor organização de tipos.
 
 ```
@@ -887,6 +942,7 @@ types/
 ```
 
 #### 7. **Criar `/config`**
+
 Configurações centralizadas.
 
 ```
@@ -897,6 +953,7 @@ config/
 ```
 
 **Exemplo:**
+
 ```typescript
 // config/env.config.ts
 import { z } from 'zod';
@@ -1081,6 +1138,7 @@ const clean = DOMPurify.sanitize(userInput);
 ## 📚 8. Recursos e Referências
 
 ### Documentação Oficial
+
 - [Next.js](https://nextjs.org/docs)
 - [React](https://react.dev/)
 - [TypeScript](https://www.typescriptlang.org/docs/)
@@ -1090,12 +1148,14 @@ const clean = DOMPurify.sanitize(userInput);
 - [NextAuth.js](https://next-auth.js.org/)
 
 ### Ferramentas
+
 - [Zod](https://zod.dev/) - Validação de schemas
 - [ESLint](https://eslint.org/) - Linting
 - [Prettier](https://prettier.io/) - Formatação
 - [Jest](https://jestjs.io/) - Testes
 
 ### Padrões
+
 - [Conventional Commits](https://www.conventionalcommits.org/)
 - [Semantic Versioning](https://semver.org/)
 

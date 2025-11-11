@@ -10,14 +10,14 @@
 
 ### Estatísticas Gerais
 
-| Categoria | Total | ✅ Conforme | ⚠️ Parcial | ❌ Não Conforme | % Conformidade |
-|-----------|-------|-------------|-----------|-----------------|----------------|
-| **Páginas** | 14 | 2 (14%) | 5 (36%) | 7 (50%) | **36%** |
-| **Componentes** | 7 | 4 (57%) | 2 (29%) | 1 (14%) | **71%** |
-| **APIs** | 43 | 0 (0%) | 15 (35%) | 28 (65%) | **18%** |
-| **Hooks** | 1 | 1 (100%) | 0 (0%) | 0 (0%) | **100%** |
-| **Utils** | 8 | 0 (0%) | 6 (75%) | 2 (25%) | **38%** |
-| **TOTAL** | 73 | 7 (10%) | 28 (38%) | 38 (52%) | **34%** |
+| Categoria       | Total | ✅ Conforme | ⚠️ Parcial | ❌ Não Conforme | % Conformidade |
+| --------------- | ----- | ----------- | ---------- | --------------- | -------------- |
+| **Páginas**     | 14    | 2 (14%)     | 5 (36%)    | 7 (50%)         | **36%**        |
+| **Componentes** | 7     | 4 (57%)     | 2 (29%)    | 1 (14%)         | **71%**        |
+| **APIs**        | 43    | 0 (0%)      | 15 (35%)   | 28 (65%)        | **18%**        |
+| **Hooks**       | 1     | 1 (100%)    | 0 (0%)     | 0 (0%)          | **100%**       |
+| **Utils**       | 8     | 0 (0%)      | 6 (75%)    | 2 (25%)         | **38%**        |
+| **TOTAL**       | 73    | 7 (10%)     | 28 (38%)   | 38 (52%)        | **34%**        |
 
 ### 🎯 Prioridades
 
@@ -31,12 +31,13 @@
 
 ### ✅ Conformes (2 arquivos)
 
-| Arquivo | Nomenclatura | TypeScript | Estrutura | Observações |
-|---------|--------------|------------|-----------|-------------|
-| `_app.tsx` | ✅ kebab-case | ✅ .tsx | ✅ Boa | Arquivo principal do Next.js |
-| `login.tsx` | ✅ kebab-case | ✅ .tsx | ✅ Boa | Página de login |
+| Arquivo     | Nomenclatura  | TypeScript | Estrutura | Observações                  |
+| ----------- | ------------- | ---------- | --------- | ---------------------------- |
+| `_app.tsx`  | ✅ kebab-case | ✅ .tsx    | ✅ Boa    | Arquivo principal do Next.js |
+| `login.tsx` | ✅ kebab-case | ✅ .tsx    | ✅ Boa    | Página de login              |
 
 **Exemplo de código conforme:**
+
 ```typescript
 // pages/login.tsx
 export default function Login() {
@@ -48,20 +49,22 @@ export default function Login() {
 
 ### ⚠️ Parcialmente Conformes (5 arquivos)
 
-| Arquivo | Problema | Ação Recomendada | Prioridade |
-|---------|----------|------------------|------------|
-| `admin/index.tsx` | ✅ TypeScript mas falta documentação JSDoc | Adicionar JSDoc e melhorar tipos | 🟡 Média |
-| `credenciamento-sas.js` | ❌ Não é .tsx, mas bem estruturado | Migrar para TypeScript | 🟡 Média |
-| `credenciamento-4events.js` | ❌ Não é .tsx, mas bem estruturado | Migrar para TypeScript | 🟡 Média |
-| `qrcode-sebrae.js` | ❌ Não é .tsx, mas bem estruturado | Migrar para TypeScript | 🟡 Média |
-| `index.js` | ❌ Não é .tsx, página principal | Migrar para TypeScript | 🟡 Média |
+| Arquivo                     | Problema                                   | Ação Recomendada                 | Prioridade |
+| --------------------------- | ------------------------------------------ | -------------------------------- | ---------- |
+| `admin/index.tsx`           | ✅ TypeScript mas falta documentação JSDoc | Adicionar JSDoc e melhorar tipos | 🟡 Média   |
+| `credenciamento-sas.js`     | ❌ Não é .tsx, mas bem estruturado         | Migrar para TypeScript           | 🟡 Média   |
+| `credenciamento-4events.js` | ❌ Não é .tsx, mas bem estruturado         | Migrar para TypeScript           | 🟡 Média   |
+| `qrcode-sebrae.js`          | ❌ Não é .tsx, mas bem estruturado         | Migrar para TypeScript           | 🟡 Média   |
+| `index.js`                  | ❌ Não é .tsx, página principal            | Migrar para TypeScript           | 🟡 Média   |
 
 **Problemas comuns:**
+
 - ❌ Falta de TypeScript
 - ❌ Falta de documentação JSDoc
 - ⚠️ Componentes internos não extraídos
 
 **Exemplo de melhoria necessária:**
+
 ```javascript
 // ❌ ANTES (credenciamento-sas.js)
 const Header = ({ attendantName, onEndShift }) => (
@@ -91,17 +94,18 @@ const Header: FC<HeaderProps> = ({ attendantName, onEndShift }) => (
 
 ### ❌ Não Conformes (7 arquivos)
 
-| Arquivo | Problemas | Prioridade |
-|---------|-----------|------------|
-| `painel-admin.js` | ❌ Nome não segue padrão, deveria ser `admin-panel.js`<br>❌ Não é TypeScript<br>❌ Sem documentação | 🔴 Alta |
-| `access-denied.js` | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Sem tipos | 🟡 Média |
-| `admin/events.js` | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Componente muito grande (740 linhas)<br>❌ Sem separação de responsabilidades | 🔴 Alta |
-| `admin/participants.js` | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Sem tipos | 🟡 Média |
-| `admin/permissions.js` | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Componente muito grande<br>❌ Modais não extraídos | 🔴 Alta |
-| `admin/reports.js` | ✅ Nome OK<br>❌ Não é TypeScript | 🟡 Média |
-| `admin/unauthorized.js` | ✅ Nome OK<br>❌ Não é TypeScript | 🟢 Baixa |
+| Arquivo                 | Problemas                                                                                                             | Prioridade |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `painel-admin.js`       | ❌ Nome não segue padrão, deveria ser `admin-panel.js`<br>❌ Não é TypeScript<br>❌ Sem documentação                  | 🔴 Alta    |
+| `access-denied.js`      | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Sem tipos                                                                     | 🟡 Média   |
+| `admin/events.js`       | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Componente muito grande (740 linhas)<br>❌ Sem separação de responsabilidades | 🔴 Alta    |
+| `admin/participants.js` | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Sem tipos                                                                     | 🟡 Média   |
+| `admin/permissions.js`  | ✅ Nome OK<br>❌ Não é TypeScript<br>❌ Componente muito grande<br>❌ Modais não extraídos                            | 🔴 Alta    |
+| `admin/reports.js`      | ✅ Nome OK<br>❌ Não é TypeScript                                                                                     | 🟡 Média   |
+| `admin/unauthorized.js` | ✅ Nome OK<br>❌ Não é TypeScript                                                                                     | 🟢 Baixa   |
 
 **Prioridade de Refatoração:**
+
 1. **`admin/events.js`** - 740 linhas, precisa ser dividido em componentes menores
 2. **`admin/permissions.js`** - Modais devem ser extraídos
 3. **`painel-admin.js`** - Renomear e migrar para TypeScript
@@ -112,14 +116,15 @@ const Header: FC<HeaderProps> = ({ attendantName, onEndShift }) => (
 
 ### ✅ Conformes (4 arquivos)
 
-| Arquivo | Nomenclatura | TypeScript | Estrutura | Observações |
-|---------|--------------|------------|-----------|-------------|
-| `admin/layout/AdminLayout.tsx` | ✅ PascalCase | ✅ .tsx | ✅ Excelente | Usa Lucide icons, bem tipado |
-| `admin/events/EventsList.tsx` | ✅ PascalCase | ✅ .tsx | ✅ Boa | Componente bem estruturado |
-| `admin/dashboard/DashboardMetrics.tsx` | ✅ PascalCase | ✅ .tsx | ✅ Boa | Bem organizado |
-| `admin/dashboard/RecentActivity.tsx` | ✅ PascalCase | ✅ .tsx | ✅ Boa | Bem organizado |
+| Arquivo                                | Nomenclatura  | TypeScript | Estrutura    | Observações                  |
+| -------------------------------------- | ------------- | ---------- | ------------ | ---------------------------- |
+| `admin/layout/AdminLayout.tsx`         | ✅ PascalCase | ✅ .tsx    | ✅ Excelente | Usa Lucide icons, bem tipado |
+| `admin/events/EventsList.tsx`          | ✅ PascalCase | ✅ .tsx    | ✅ Boa       | Componente bem estruturado   |
+| `admin/dashboard/DashboardMetrics.tsx` | ✅ PascalCase | ✅ .tsx    | ✅ Boa       | Bem organizado               |
+| `admin/dashboard/RecentActivity.tsx`   | ✅ PascalCase | ✅ .tsx    | ✅ Boa       | Bem organizado               |
 
 **Exemplo de código conforme:**
+
 ```typescript
 // components/admin/layout/AdminLayout.tsx
 interface AdminLayoutProps {
@@ -137,20 +142,21 @@ export const AdminLayout: FC<AdminLayoutProps> = ({ children }) => {
 
 ### ⚠️ Parcialmente Conformes (2 arquivos)
 
-| Arquivo | Problema | Ação Recomendada | Prioridade |
-|---------|----------|------------------|------------|
-| `AdminLayout.js` | ❌ Não é .tsx<br>⚠️ Duplicado com `admin/layout/AdminLayout.tsx` | Remover duplicata ou migrar | 🟡 Média |
-| `DashboardContent.js` | ❌ Não é .tsx<br>❌ Sem tipos | Migrar para TypeScript | 🟡 Média |
+| Arquivo               | Problema                                                         | Ação Recomendada            | Prioridade |
+| --------------------- | ---------------------------------------------------------------- | --------------------------- | ---------- |
+| `AdminLayout.js`      | ❌ Não é .tsx<br>⚠️ Duplicado com `admin/layout/AdminLayout.tsx` | Remover duplicata ou migrar | 🟡 Média   |
+| `DashboardContent.js` | ❌ Não é .tsx<br>❌ Sem tipos                                    | Migrar para TypeScript      | 🟡 Média   |
 
 ---
 
 ### ❌ Não Conformes (1 arquivo)
 
-| Arquivo | Problemas | Ação Recomendada | Prioridade |
-|---------|-----------|------------------|------------|
-| `withAdminProtection.js` | ❌ Não é .tsx<br>❌ HOC não tipado<br>⚠️ Pattern antigo | Migrar para TypeScript e considerar usar middleware do Next.js 13+ | 🟢 Baixa |
+| Arquivo                  | Problemas                                               | Ação Recomendada                                                   | Prioridade |
+| ------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------ | ---------- |
+| `withAdminProtection.js` | ❌ Não é .tsx<br>❌ HOC não tipado<br>⚠️ Pattern antigo | Migrar para TypeScript e considerar usar middleware do Next.js 13+ | 🟢 Baixa   |
 
 **Recomendação:**
+
 ```typescript
 // ✅ MELHOR: Usar middleware do Next.js
 // middleware.ts
@@ -189,16 +195,16 @@ export const config = {
 
 ### 🔴 APIs de Prioridade ALTA (Críticas)
 
-| Arquivo | Problema Principal | Impacto | Estimativa |
-|---------|-------------------|---------|------------|
-| `api/admin/events.js` | ❌ 349 linhas, sem tipos, validação fraca | Alto | 4-6h |
-| `api/admin/participants.js` | ❌ Sem validação de entrada | Alto | 3-4h |
-| `api/admin/users.js` | ❌ Manipula dados sensíveis sem tipos | **Crítico** | 4-5h |
-| `api/admin/users/delete.js` | ❌ Operação destrutiva sem validação forte | **Crítico** | 2-3h |
-| `api/admin/users/reset-password.js` | ❌ Segurança inadequada | **Crítico** | 3-4h |
-| `api/auth/[...nextauth].js` | ⚠️ Configuração complexa sem tipos | Alto | 5-6h |
-| `api/process-credenciamento.js` | ❌ Lógica crítica sem validação | **Crítico** | 4-5h |
-| `api/search-participant.js` | ❌ Integração externa sem tratamento adequado | Alto | 3-4h |
+| Arquivo                             | Problema Principal                            | Impacto     | Estimativa |
+| ----------------------------------- | --------------------------------------------- | ----------- | ---------- |
+| `api/admin/events.js`               | ❌ 349 linhas, sem tipos, validação fraca     | Alto        | 4-6h       |
+| `api/admin/participants.js`         | ❌ Sem validação de entrada                   | Alto        | 3-4h       |
+| `api/admin/users.js`                | ❌ Manipula dados sensíveis sem tipos         | **Crítico** | 4-5h       |
+| `api/admin/users/delete.js`         | ❌ Operação destrutiva sem validação forte    | **Crítico** | 2-3h       |
+| `api/admin/users/reset-password.js` | ❌ Segurança inadequada                       | **Crítico** | 3-4h       |
+| `api/auth/[...nextauth].js`         | ⚠️ Configuração complexa sem tipos            | Alto        | 5-6h       |
+| `api/process-credenciamento.js`     | ❌ Lógica crítica sem validação               | **Crítico** | 4-5h       |
+| `api/search-participant.js`         | ❌ Integração externa sem tratamento adequado | Alto        | 3-4h       |
 
 **Total Estimado para APIs Críticas: 28-37 horas**
 
@@ -232,6 +238,7 @@ async function handleGet(req, res) {
 ```
 
 **Problemas:**
+
 - ❌ Sem tipos TypeScript
 - ❌ Sem validação de query parameters
 - ❌ Resposta de erro genérica
@@ -245,7 +252,7 @@ async function handleGet(req, res) {
 ```typescript
 /**
  * API Route: Events Management
- * 
+ *
  * @route GET /api/admin/events
  * @description Lista eventos com paginação e filtros
  * @auth Requer autenticação admin
@@ -298,10 +305,7 @@ type ApiResponse = EventsListSuccess | ApiError;
 // MAIN HANDLER
 // ============================================================================
 
-async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiResponse>
-) {
+async function handler(req: NextApiRequest, res: NextApiResponse<ApiResponse>) {
   // --------------------------------------------------------------------------
   // 1. METHOD VALIDATION
   // --------------------------------------------------------------------------
@@ -322,7 +326,7 @@ async function handler(
   // 3. REQUEST VALIDATION
   // --------------------------------------------------------------------------
   const validation = querySchema.safeParse(req.query);
-  
+
   if (!validation.success) {
     return res.status(400).json({
       success: false,
@@ -343,8 +347,8 @@ async function handler(
       success: true,
       data: {
         events: [],
-        pagination: { page, limit, total: 0 }
-      }
+        pagination: { page, limit, total: 0 },
+      },
     });
   } catch (error) {
     console.error('Erro ao buscar eventos:', error);
@@ -365,67 +369,67 @@ export default handler;
 
 #### 🔐 APIs de Autenticação (5 arquivos)
 
-| Arquivo | Status | Problemas | Prioridade |
-|---------|--------|-----------|------------|
-| `api/auth/[...nextauth].js` | ⚠️ | Configuração complexa, sem tipos | 🔴 Alta |
-| `api/auth/admin-login.js` | ❌ | Sem validação, sem tipos | 🔴 Alta |
-| `api/auth/create-admin.js` | ❌ | **CRÍTICO**: Criação de admin sem validação forte | 🔴 **Crítica** |
-| `api/auth/reset-admin-password.js` | ❌ | **CRÍTICO**: Reset de senha sem validação | 🔴 **Crítica** |
-| `api/auth.js` | ❌ | Sem tipos | 🟡 Média |
+| Arquivo                            | Status | Problemas                                         | Prioridade     |
+| ---------------------------------- | ------ | ------------------------------------------------- | -------------- |
+| `api/auth/[...nextauth].js`        | ⚠️     | Configuração complexa, sem tipos                  | 🔴 Alta        |
+| `api/auth/admin-login.js`          | ❌     | Sem validação, sem tipos                          | 🔴 Alta        |
+| `api/auth/create-admin.js`         | ❌     | **CRÍTICO**: Criação de admin sem validação forte | 🔴 **Crítica** |
+| `api/auth/reset-admin-password.js` | ❌     | **CRÍTICO**: Reset de senha sem validação         | 🔴 **Crítica** |
+| `api/auth.js`                      | ❌     | Sem tipos                                         | 🟡 Média       |
 
 #### 👥 APIs de Admin (11 arquivos)
 
-| Arquivo | Status | Problemas | Prioridade |
-|---------|--------|-----------|------------|
-| `api/admin/dashboard.js` | ⚠️ | Sem tipos, mas estrutura OK | 🟡 Média |
-| `api/admin/events.js` | ❌ | 349 linhas, sem tipos | 🔴 Alta |
-| `api/admin/events/recent.js` | ⚠️ | Usa `withApiAuth`, mas sem tipos | 🟡 Média |
-| `api/admin/metrics.js` | ⚠️ | Usa `withApiAuth`, mas sem tipos | 🟡 Média |
-| `api/admin/participants.js` | ❌ | Sem validação adequada | 🔴 Alta |
-| `api/admin/permissions.js` | ❌ | Manipula permissões sem validação | 🔴 Alta |
-| `api/admin/reports.js` | ⚠️ | Sem tipos | 🟡 Média |
-| `api/admin/roles.js` | ❌ | Manipula roles sem validação | 🔴 Alta |
-| `api/admin/users.js` | ❌ | **CRÍTICO**: Manipula usuários | 🔴 **Crítica** |
-| `api/admin/users/delete.js` | ❌ | **CRÍTICO**: Delete sem validação forte | 🔴 **Crítica** |
-| `api/admin/users/reset-password.js` | ❌ | **CRÍTICO**: Reset senha sem validação | 🔴 **Crítica** |
+| Arquivo                             | Status | Problemas                               | Prioridade     |
+| ----------------------------------- | ------ | --------------------------------------- | -------------- |
+| `api/admin/dashboard.js`            | ⚠️     | Sem tipos, mas estrutura OK             | 🟡 Média       |
+| `api/admin/events.js`               | ❌     | 349 linhas, sem tipos                   | 🔴 Alta        |
+| `api/admin/events/recent.js`        | ⚠️     | Usa `withApiAuth`, mas sem tipos        | 🟡 Média       |
+| `api/admin/metrics.js`              | ⚠️     | Usa `withApiAuth`, mas sem tipos        | 🟡 Média       |
+| `api/admin/participants.js`         | ❌     | Sem validação adequada                  | 🔴 Alta        |
+| `api/admin/permissions.js`          | ❌     | Manipula permissões sem validação       | 🔴 Alta        |
+| `api/admin/reports.js`              | ⚠️     | Sem tipos                               | 🟡 Média       |
+| `api/admin/roles.js`                | ❌     | Manipula roles sem validação            | 🔴 Alta        |
+| `api/admin/users.js`                | ❌     | **CRÍTICO**: Manipula usuários          | 🔴 **Crítica** |
+| `api/admin/users/delete.js`         | ❌     | **CRÍTICO**: Delete sem validação forte | 🔴 **Crítica** |
+| `api/admin/users/reset-password.js` | ❌     | **CRÍTICO**: Reset senha sem validação  | 🔴 **Crítica** |
 
 #### 🔍 APIs de Busca (5 arquivos)
 
-| Arquivo | Status | Problemas | Prioridade |
-|---------|--------|-----------|------------|
-| `api/search.js` | ❌ | Sem validação de entrada | 🟡 Média |
-| `api/search-participant.js` | ❌ | 184+ linhas, integração externa sem tipos | 🔴 Alta |
-| `api/search-company.js` | ❌ | Integração externa sem tratamento | 🟡 Média |
-| `api/search-cpe.js` | ❌ | Integração externa sem tratamento | 🟡 Média |
-| `api/search-sas.js` | ❌ | Integração SAS sem tipos | 🔴 Alta |
+| Arquivo                     | Status | Problemas                                 | Prioridade |
+| --------------------------- | ------ | ----------------------------------------- | ---------- |
+| `api/search.js`             | ❌     | Sem validação de entrada                  | 🟡 Média   |
+| `api/search-participant.js` | ❌     | 184+ linhas, integração externa sem tipos | 🔴 Alta    |
+| `api/search-company.js`     | ❌     | Integração externa sem tratamento         | 🟡 Média   |
+| `api/search-cpe.js`         | ❌     | Integração externa sem tratamento         | 🟡 Média   |
+| `api/search-sas.js`         | ❌     | Integração SAS sem tipos                  | 🔴 Alta    |
 
 #### 📝 APIs de Credenciamento (6 arquivos)
 
-| Arquivo | Status | Problemas | Prioridade |
-|---------|--------|-----------|------------|
-| `api/process-credenciamento.js` | ❌ | **CRÍTICO**: Lógica principal sem validação | 🔴 **Crítica** |
-| `api/register-local-credenciamento.js` | ❌ | Sem validação adequada | 🔴 Alta |
-| `api/credentialing.js` | ❌ | Sem tipos | 🟡 Média |
-| `api/check-participant.js` | ❌ | Sem validação | 🟡 Média |
-| `api/webhook-checkin.js` | ❌ | Webhook sem validação de assinatura | 🔴 **Crítica** |
-| `api/webhook-notify.js` | ❌ | Webhook sem validação | 🔴 Alta |
+| Arquivo                                | Status | Problemas                                   | Prioridade     |
+| -------------------------------------- | ------ | ------------------------------------------- | -------------- |
+| `api/process-credenciamento.js`        | ❌     | **CRÍTICO**: Lógica principal sem validação | 🔴 **Crítica** |
+| `api/register-local-credenciamento.js` | ❌     | Sem validação adequada                      | 🔴 Alta        |
+| `api/credentialing.js`                 | ❌     | Sem tipos                                   | 🟡 Média       |
+| `api/check-participant.js`             | ❌     | Sem validação                               | 🟡 Média       |
+| `api/webhook-checkin.js`               | ❌     | Webhook sem validação de assinatura         | 🔴 **Crítica** |
+| `api/webhook-notify.js`                | ❌     | Webhook sem validação                       | 🔴 Alta        |
 
 #### 📅 APIs de Eventos (4 arquivos)
 
-| Arquivo | Status | Problemas | Prioridade |
-|---------|--------|-----------|------------|
-| `api/events.js` | ❌ | Sem tipos | 🟡 Média |
-| `api/sas-events.js` | ❌ | Integração SAS sem tipos | 🔴 Alta |
-| `api/fetch-sas-event.js` | ❌ | Integração externa crítica sem validação | 🔴 Alta |
-| `api/sync-sas-event.js` | ❌ | Sincronização sem validação | 🔴 Alta |
+| Arquivo                  | Status | Problemas                                | Prioridade |
+| ------------------------ | ------ | ---------------------------------------- | ---------- |
+| `api/events.js`          | ❌     | Sem tipos                                | 🟡 Média   |
+| `api/sas-events.js`      | ❌     | Integração SAS sem tipos                 | 🔴 Alta    |
+| `api/fetch-sas-event.js` | ❌     | Integração externa crítica sem validação | 🔴 Alta    |
+| `api/sync-sas-event.js`  | ❌     | Sincronização sem validação              | 🔴 Alta    |
 
 #### 🎟️ APIs de Integrações Externas (3 arquivos)
 
-| Arquivo | Status | Problemas | Prioridade |
-|---------|--------|-----------|------------|
-| `api/4events-check.js` | ❌ | Integração 4Events sem tipos | 🔴 Alta |
-| `api/4events-register.js` | ❌ | Registro externo sem validação | 🔴 Alta |
-| `api/ticket-categories.js` | ❌ | Sem tipos | 🟡 Média |
+| Arquivo                    | Status | Problemas                      | Prioridade |
+| -------------------------- | ------ | ------------------------------ | ---------- |
+| `api/4events-check.js`     | ❌     | Integração 4Events sem tipos   | 🔴 Alta    |
+| `api/4events-register.js`  | ❌     | Registro externo sem validação | 🔴 Alta    |
+| `api/ticket-categories.js` | ❌     | Sem tipos                      | 🟡 Média   |
 
 ---
 
@@ -433,11 +437,12 @@ export default handler;
 
 ### ✅ Status: EXCELENTE (1 arquivo)
 
-| Arquivo | Status | Observações |
-|---------|--------|-------------|
+| Arquivo             | Status               | Observações                                  |
+| ------------------- | -------------------- | -------------------------------------------- |
 | `useParticipant.ts` | ✅ **100% Conforme** | Bem tipado, usa React Query, estrutura clara |
 
 **Exemplo de código conforme:**
+
 ```typescript
 // ✅ hooks/useParticipant.ts
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -463,6 +468,7 @@ export const useParticipantSearch = (cpf: string, enabled = false) => {
 ```
 
 **✅ Pontos Positivos:**
+
 - TypeScript completo
 - Nomenclatura `use + PascalCase`
 - Uso correto de React Query
@@ -475,23 +481,23 @@ export const useParticipantSearch = (cpf: string, enabled = false) => {
 
 ### ⚠️ Parcialmente Conformes (6 arquivos)
 
-| Arquivo | Status | Problemas | Ação Recomendada | Prioridade |
-|---------|--------|-----------|------------------|------------|
-| `api-auth.js` | ⚠️ | ❌ Não é .ts<br>⚠️ Lógica de permissões duplicada | Migrar para TS e refatorar | 🔴 Alta |
-| `permissions.js` | ⚠️ | ❌ Não é .ts<br>✅ Estrutura boa | Migrar para TS | 🟡 Média |
-| `user-management.js` | ⚠️ | ❌ Não é .ts<br>⚠️ Problema com SUPABASE_SERVICE_KEY | Migrar para TS e fix env | 🔴 Alta |
-| `supabase-client.js` | ⚠️ | ❌ Não é .ts<br>⚠️ Duplicado com `.ts` | Remover duplicata | 🟡 Média |
-| `validators.js` | ⚠️ | ❌ Não é .ts<br>❌ Sem validação com Zod | Migrar para TS + Zod | 🔴 Alta |
-| `sas-client.js` | ⚠️ | ❌ Não é .ts<br>❌ Sem tratamento de erros adequado | Migrar para service layer | 🔴 Alta |
+| Arquivo              | Status | Problemas                                            | Ação Recomendada           | Prioridade |
+| -------------------- | ------ | ---------------------------------------------------- | -------------------------- | ---------- |
+| `api-auth.js`        | ⚠️     | ❌ Não é .ts<br>⚠️ Lógica de permissões duplicada    | Migrar para TS e refatorar | 🔴 Alta    |
+| `permissions.js`     | ⚠️     | ❌ Não é .ts<br>✅ Estrutura boa                     | Migrar para TS             | 🟡 Média   |
+| `user-management.js` | ⚠️     | ❌ Não é .ts<br>⚠️ Problema com SUPABASE_SERVICE_KEY | Migrar para TS e fix env   | 🔴 Alta    |
+| `supabase-client.js` | ⚠️     | ❌ Não é .ts<br>⚠️ Duplicado com `.ts`               | Remover duplicata          | 🟡 Média   |
+| `validators.js`      | ⚠️     | ❌ Não é .ts<br>❌ Sem validação com Zod             | Migrar para TS + Zod       | 🔴 Alta    |
+| `sas-client.js`      | ⚠️     | ❌ Não é .ts<br>❌ Sem tratamento de erros adequado  | Migrar para service layer  | 🔴 Alta    |
 
 ---
 
 ### ❌ Não Conformes (2 arquivos)
 
-| Arquivo | Problemas | Ação Recomendada | Prioridade |
-|---------|-----------|------------------|------------|
-| `cpe-auth.js` | ❌ Não é .ts<br>❌ Cliente de integração sem tipos<br>❌ Sem tratamento de erros | Migrar para `/services/cpe.service.ts` | 🔴 Alta |
-| `auth.js` | ❌ Não é .ts<br>⚠️ Configuração complexa | Migrar para `/lib/auth/*.ts` | 🟡 Média |
+| Arquivo       | Problemas                                                                        | Ação Recomendada                       | Prioridade |
+| ------------- | -------------------------------------------------------------------------------- | -------------------------------------- | ---------- |
+| `cpe-auth.js` | ❌ Não é .ts<br>❌ Cliente de integração sem tipos<br>❌ Sem tratamento de erros | Migrar para `/services/cpe.service.ts` | 🔴 Alta    |
+| `auth.js`     | ❌ Não é .ts<br>⚠️ Configuração complexa                                         | Migrar para `/lib/auth/*.ts`           | 🟡 Média   |
 
 ---
 
@@ -663,13 +669,13 @@ lib/
 
 ## 📊 7. Resumo de Estimativas
 
-| Fase | Foco | Arquivos | Horas | Semanas |
-|------|------|----------|-------|---------|
-| **Fase 1** 🔴 | Segurança + APIs Críticas | 11 | 36-45h | 1-2 |
-| **Fase 2** 🟡 | APIs Admin + Integrações | 9 | 34-44h | 2 |
-| **Fase 3** 🟢 | Páginas + Componentes | 7 | 28-35h | 2 |
-| **Fase 4** 🔄 | APIs Restantes | 15 | 15-20h | 1 |
-| **TOTAL** | - | **42** | **113-144h** | **6-7** |
+| Fase          | Foco                      | Arquivos | Horas        | Semanas |
+| ------------- | ------------------------- | -------- | ------------ | ------- |
+| **Fase 1** 🔴 | Segurança + APIs Críticas | 11       | 36-45h       | 1-2     |
+| **Fase 2** 🟡 | APIs Admin + Integrações  | 9        | 34-44h       | 2       |
+| **Fase 3** 🟢 | Páginas + Componentes     | 7        | 28-35h       | 2       |
+| **Fase 4** 🔄 | APIs Restantes            | 15       | 15-20h       | 1       |
+| **TOTAL**     | -                         | **42**   | **113-144h** | **6-7** |
 
 **Tempo total estimado: 113-144 horas (6-7 semanas de trabalho dedicado)**
 
@@ -680,6 +686,7 @@ lib/
 ### Para cada arquivo refatorado, verificar:
 
 #### Nomenclatura
+
 - [ ] Componentes: `PascalCase.tsx`
 - [ ] Páginas: `kebab-case.tsx`
 - [ ] APIs: `kebab-case.ts`
@@ -687,6 +694,7 @@ lib/
 - [ ] Utils: `kebab-case.ts` ou `camelCase.ts`
 
 #### TypeScript
+
 - [ ] Arquivo é `.ts` ou `.tsx`
 - [ ] Tipos/interfaces definidas no topo
 - [ ] Props tipadas (componentes)
@@ -694,11 +702,13 @@ lib/
 - [ ] Sem uso de `any`
 
 #### Documentação
+
 - [ ] JSDoc no topo do arquivo
 - [ ] Comentários para lógica complexa
 - [ ] Seções delimitadas com comentários
 
 #### Estrutura (APIs)
+
 - [ ] Validação de método HTTP (405)
 - [ ] Autenticação implementada (401)
 - [ ] Autorização implementada (403)
@@ -709,6 +719,7 @@ lib/
 - [ ] Logs estruturados
 
 #### Estrutura (Componentes)
+
 - [ ] Props tipadas com interface
 - [ ] Estado gerenciado adequadamente
 - [ ] Valores computados com useMemo
@@ -723,33 +734,37 @@ lib/
 
 ### Objetivos Mensuráveis
 
-| Métrica | Atual | Meta Fase 1 | Meta Fase 2 | Meta Fase 3 | Meta Final |
-|---------|-------|-------------|-------------|-------------|------------|
-| % APIs com TypeScript | 0% | 25% | 50% | 75% | 100% |
-| % APIs com validação Zod | 0% | 25% | 50% | 75% | 100% |
-| % Componentes .tsx | 57% | 70% | 85% | 100% | 100% |
-| % Páginas .tsx | 14% | 30% | 60% | 100% | 100% |
-| % Utils .ts | 0% | 50% | 75% | 100% | 100% |
-| **% Conformidade Geral** | **34%** | **50%** | **70%** | **90%** | **100%** |
+| Métrica                  | Atual   | Meta Fase 1 | Meta Fase 2 | Meta Fase 3 | Meta Final |
+| ------------------------ | ------- | ----------- | ----------- | ----------- | ---------- |
+| % APIs com TypeScript    | 0%      | 25%         | 50%         | 75%         | 100%       |
+| % APIs com validação Zod | 0%      | 25%         | 50%         | 75%         | 100%       |
+| % Componentes .tsx       | 57%     | 70%         | 85%         | 100%        | 100%       |
+| % Páginas .tsx           | 14%     | 30%         | 60%         | 100%        | 100%       |
+| % Utils .ts              | 0%      | 50%         | 75%         | 100%        | 100%       |
+| **% Conformidade Geral** | **34%** | **50%**     | **70%**     | **90%**     | **100%**   |
 
 ### Benefícios Esperados
 
 ✅ **Segurança:**
+
 - Validação de entrada em todas as APIs
 - Tipos previnem erros de runtime
 - Logs de auditoria implementados
 
 ✅ **Manutenibilidade:**
+
 - Código autodocumentado com TypeScript
 - Estrutura consistente
 - Refatoração mais segura
 
 ✅ **Performance:**
+
 - Menos erros em produção
 - Debugging mais rápido
 - Onboarding de devs facilitado
 
 ✅ **Qualidade:**
+
 - Testes mais fáceis de escrever
 - IntelliSense completo
 - Documentação viva

@@ -331,9 +331,9 @@ export class SASService {
   }
 
   /**
-   * Sincroniza evento do SAS para o Supabase
+   * Sincroniza evento do SAS para o banco de dados
    */
-  async syncEventToSupabase(options: SyncEventOptions): Promise<string> {
+  async syncEventToDatabase(options: SyncEventOptions): Promise<string> {
     const { eventData, overwrite = false } = options;
     // Verificar se evento já existe
     const existingRes = await query('SELECT id FROM events WHERE codevento_sas = $1 LIMIT 1', [
@@ -399,10 +399,10 @@ export class SASService {
   }
 
   /**
-   * Sincroniza participantes do SAS para o Supabase
+   * Sincroniza participantes do SAS para o banco de dados
    * IMPORTANTE: participants não tem event_id. O relacionamento é via registrations.
    */
-  async syncParticipantsToSupabase(options: SyncParticipantsOptions): Promise<{
+  async syncParticipantsToDatabase(options: SyncParticipantsOptions): Promise<{
     inserted: number;
     updated: number;
     skipped: number;
@@ -412,7 +412,7 @@ export class SASService {
     let updated = 0;
     let skipped = 0;
 
-    console.log(`[SAS] 🔄 Starting syncParticipantsToSupabase for event ${eventId}`);
+    console.log(`[SAS] 🔄 Starting syncParticipantsToDatabase for event ${eventId}`);
     console.log(`[SAS] 📋 Processing ${participants.length} participants (overwrite=${overwrite})`);
 
     for (const participant of participants) {
@@ -559,14 +559,14 @@ export class SASService {
     // 1. Buscar dados do evento
     const eventData = await this.fetchEvent({ codEvento });
 
-    // 2. Sincronizar evento para Supabase
-    const eventId = await this.syncEventToSupabase({ eventData, overwrite });
+    // 2. Sincronizar evento para o banco de dados
+    const eventId = await this.syncEventToDatabase({ eventData, overwrite });
 
     // 3. Buscar participantes
     const participants = await this.fetchParticipants({ codEvento });
 
-    // 4. Sincronizar participantes para Supabase
-    const syncResult = await this.syncParticipantsToSupabase({
+    // 4. Sincronizar participantes para o banco de dados
+    const syncResult = await this.syncParticipantsToDatabase({
       eventId,
       participants,
       overwrite,

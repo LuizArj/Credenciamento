@@ -3,12 +3,14 @@
 ## ✅ O QUE JÁ FOI FEITO
 
 ### 1. Schema SQL Final
+
 - ✅ Criado `sql/schema_final.sql` - arquivo único com toda a estrutura do banco
 - ✅ Incluídos: tabelas, índices, triggers, constraints corretos
 - ✅ Removidas referências ao Supabase RLS
 - ✅ Adicionadas views úteis (vw_events_summary, vw_participants_activity)
 
 ### 2. Arquivos SQL Obsoletos Removidos
+
 - ✅ temp-recovery-setup.sql
 - ✅ migrate-from-supabase.sql
 - ✅ audit.js, run_audit.ps1, audit_database.sql
@@ -24,13 +26,16 @@
 ### PASSO 1: Remover Logging Excessivo
 
 #### Arquivo: `pages/api/search-participant.js`
+
 **Linhas para remover/comentar:**
+
 - Linha ~50-60: `console.log('=== INÍCIO DA RESPOSTA BRUTA DO SAS ===', ...)`
 - Linha ~70-80: `console.log('=== DADOS PARSEADOS DO SAS ===', ...)`
 - Linha ~100: `console.log('SAS: Dados do cliente encontrado:', ...)`
 - Linha ~120: `console.log('SAS: Dados formatados:', ...)`
 
 **Manter apenas:**
+
 ```javascript
 console.log(`Buscando participante: CPF ${cpf}`);
 // Em caso de erro:
@@ -38,37 +43,46 @@ console.error('Erro ao buscar participante:', error);
 ```
 
 #### Arquivo: `pages/api/sync-sas-event.js`
+
 **Remover:**
+
 - Dumps completos de dados do evento
 - Logs de "Sincronizando evento SAS" com objeto completo
 
 **Manter apenas:**
+
 ```javascript
 console.log(`Sincronizando evento SAS: ${eventSasId}`);
 console.log(`Evento ${eventId} sincronizado com sucesso`);
 ```
 
 #### Arquivo: `lib/config/database.ts`
+
 **Modificar linhas ~55-65:**
+
 ```typescript
 // ANTES (muito verboso):
 console.log('Query executada:', {
   text: queryConfig.text || queryConfig,
   duration,
-  rows: result.rowCount
+  rows: result.rowCount,
 });
 
 // DEPOIS (apenas em desenvolvimento):
 if (process.env.NODE_ENV === 'development' && process.env.DEBUG_SQL === 'true') {
   console.log('[SQL]', {
-    query: typeof queryConfig === 'string' ? queryConfig.substring(0, 100) : queryConfig.text.substring(0, 100),
+    query:
+      typeof queryConfig === 'string'
+        ? queryConfig.substring(0, 100)
+        : queryConfig.text.substring(0, 100),
     duration: `${duration}ms`,
-    rows: result.rowCount
+    rows: result.rowCount,
   });
 }
 ```
 
 #### Arquivo: `pages/credenciamento-sas.js`
+
 **Remover:** Todos os console.log de dados de participantes
 
 ---
@@ -76,6 +90,7 @@ if (process.env.NODE_ENV === 'development' && process.env.DEBUG_SQL === 'true') 
 ### PASSO 2: Remover Documentação Temporária
 
 #### Arquivos para ARQUIVAR (mover para pasta `docs/archive/`):
+
 ```
 sql/AUDITORIA_PGADMIN.md
 sql/README_AUDITORIA.md
@@ -86,6 +101,7 @@ TEMP_RECOVERY_README.md (se ainda existir)
 ```
 
 #### Comando PowerShell:
+
 ```powershell
 New-Item -Path 'docs/archive' -ItemType Directory -Force
 Move-Item -Path 'sql/AUDITORIA_PGADMIN.md' -Destination 'docs/archive/'
@@ -99,6 +115,7 @@ Move-Item -Path 'REFACTORING_*.md' -Destination 'docs/archive/' -ErrorAction Sil
 ### PASSO 3: Criar .env.example
 
 #### Arquivo: `.env.example`
+
 ```bash
 # ============================================
 # CONFIGURAÇÃO DO BANCO DE DADOS
@@ -149,19 +166,27 @@ PORT=3000
 
 ---
 
-### PASSO 4: Limpar Referências ao Supabase
+### PASSO 4: Verificar Limpeza de Código Legado
 
-#### Arquivos para verificar e remover imports/código do Supabase:
-1. `lib/supabaseClient.js` - DELETAR se existir
-2. `lib/auth.js` - Remover imports de @supabase/auth-helpers
-3. Verificar em todas as APIs: `grep -r "supabase" pages/api/`
+#### Itens já realizados (v1.1.0):
+
+1. ✅ `supabase/` - Pasta deletada
+2. ✅ `lib/config/supabase.ts` - Arquivo deletado
+3. ✅ `services/supabase.service.ts` - Arquivo deletado
+4. ✅ Migração completa para PostgreSQL direto via `lib/config/database.ts`
+
+#### Verificar se necessário:
+
+- Revisar imports legados em `lib/auth.js` ou outras APIs antigas
+- Executar: `grep -r "supabase" pages/api/` para verificar referências restantes
 
 ---
 
 ### PASSO 5: Criar README.md Principal
 
 #### Estrutura sugerida para `README.md`:
-```markdown
+
+````markdown
 # Sistema de Credenciamento Sebrae
 
 Sistema completo de gerenciamento de eventos e credenciamento integrado com SAS Sebrae.
@@ -186,17 +211,21 @@ Sistema completo de gerenciamento de eventos e credenciamento integrado com SAS 
 ## 🔧 Instalação
 
 ### 1. Clone o repositório
+
 ```bash
 git clone <repo-url>
 cd projeto-credenciamento
 ```
+````
 
 ### 2. Instale dependências
+
 ```bash
 npm install
 ```
 
 ### 3. Configure o banco de dados
+
 ```bash
 # Criar database e usuário
 psql -U postgres
@@ -210,12 +239,14 @@ psql -d credenciamento -U credenciamento -f sql/schema_final.sql
 ```
 
 ### 4. Configure variáveis de ambiente
+
 ```bash
 cp .env.example .env.local
 # Edite .env.local com suas credenciais
 ```
 
 ### 5. Inicie o servidor
+
 ```bash
 npm run dev
 ```
@@ -231,6 +262,7 @@ Acesse: http://localhost:3000
 ## 🔐 Usuário Admin Inicial
 
 Após login via Keycloak, execute no PostgreSQL:
+
 ```sql
 -- Seu usuário será criado automaticamente
 -- Tornar admin:
@@ -271,7 +303,8 @@ npm run test:auth
 ## 📝 Licença
 
 [Sua licença aqui]
-```
+
+````
 
 ---
 
@@ -280,7 +313,7 @@ npm run test:auth
 ### Código
 - [ ] Remover console.log excessivos (search-participant, sync-sas-event, database.ts)
 - [ ] Adicionar process.env.DEBUG_SQL para logs SQL opcionais
-- [ ] Remover imports/código do Supabase
+- [x] Remover imports/código do Supabase ✅ (Realizado em v1.1.0)
 - [ ] Validar error handling em todas as APIs principais
 
 ### Documentação
@@ -288,6 +321,13 @@ npm run test:auth
 - [ ] Criar .env.example
 - [ ] Arquivar docs temporários (AUDITORIA_*, REFACTORING_*, etc)
 - [ ] Manter apenas: README.md, PERMISSOES_README.md, IMPORTACAO_README.md
+
+### Limpeza Realizada (v1.1.0)
+- [x] ✅ Pasta `supabase/` deletada
+- [x] ✅ Arquivos Supabase removidos (lib/config/supabase.ts, services/supabase.service.ts)
+- [x] ✅ Variáveis de ambiente Supabase removidas do .env.local
+- [x] ✅ Funções renomeadas (syncToSupabase → syncToDatabase)
+- [x] ✅ Documentação histórica movida para docs/archive/
 
 ### SQL
 - [ ] Validar schema_final.sql está correto
@@ -320,9 +360,10 @@ grep -r "console.log" pages/api/ --include="*.js"
 
 # Buscar console.log de dados grandes
 grep -r "console.log.*===.*===" pages/api/ --include="*.js"
-```
+````
 
 ### Arquivar documentação:
+
 ```powershell
 New-Item -Path 'docs/archive' -ItemType Directory -Force
 Move-Item -Path 'sql/AUDITORIA_PGADMIN.md','sql/README_AUDITORIA.md' -Destination 'docs/archive/'
@@ -330,6 +371,7 @@ Move-Item -Path 'REFACTORING_*.md','AUDITORIA_*.md' -Destination 'docs/archive/'
 ```
 
 ### Validar schema:
+
 ```bash
 # Testar schema em banco limpo
 dropdb credenciamento_test

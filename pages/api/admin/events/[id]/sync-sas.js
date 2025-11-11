@@ -102,7 +102,7 @@ export default async function handler(req, res) {
       console.log(`[SYNC_SAS] Target event ID: ${localEvent.id}`);
       console.log(`[SYNC_SAS] Overwrite mode: ${overwrite}`);
 
-      syncStats = await sasService.syncParticipantsToSupabase({
+      syncStats = await sasService.syncParticipantsToDatabase({
         eventId: localEvent.id,
         participants: sasParticipants,
         overwrite: overwrite,
