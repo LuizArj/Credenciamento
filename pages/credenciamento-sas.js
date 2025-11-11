@@ -146,7 +146,7 @@ const ConfigurationScreen = ({ onSessionStart }) => {
     setError('');
 
     try {
-  // Sincronizar evento SAS com banco local automaticamente (minimal logging)
+      // Sincronizar evento SAS com banco local automaticamente (minimal logging)
       const syncResponse = await fetch('/api/sync-sas-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -908,6 +908,50 @@ export default function CredenciamentoSAS() {
         registrationTimestamp: getCurrentDateTimeGMT4(), // Usar GMT-4 (Amazonas)
       };
 
+      // 2.5) NOVO: Verificar se participante já foi credenciado por outro atendente
+      // Fazemos isso ANTES de mostrar sucesso, mas não bloqueamos o fluxo
+      try {
+        const checkRes = await fetch('/api/check-existing-checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cpf: formData.cpf.replace(/\D/g, ''),
+            eventId: session.localEventId || session.eventDetails.id,
+          }),
+        });
+
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+
+          if (checkData.alreadyCheckedIn) {
+            const checkInDate = new Date(checkData.checkInData.data_check_in);
+            const formattedDate = checkInDate.toLocaleDateString('pt-BR');
+            const formattedTime = checkInDate.toLocaleTimeString('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+
+            // Alerta destacado para o operador
+            const shouldContinue = confirm(
+              `⚠️ ATENÇÃO: PARTICIPANTE JÁ CREDENCIADO!\n\n` +
+                `📋 Nome: ${checkData.participantName}\n` +
+                `📅 Data: ${formattedDate} às ${formattedTime}\n` +
+                `👤 Por: ${checkData.checkInData.responsavel_credenciamento}\n\n` +
+                `Este participante já foi credenciado anteriormente neste evento.\n\n` +
+                `Deseja prosseguir mesmo assim?`
+            );
+
+            if (!shouldContinue) {
+              setLoading(false);
+              return; // Cancelar credenciamento
+            }
+          }
+        }
+      } catch (checkError) {
+        console.warn('Erro ao verificar credenciamento existente:', checkError);
+        // Não bloquear o fluxo se a verificação falhar
+      }
+
       // 3) Mostrar sucesso imediatamente e disparar processos em background
       setSuccess(true);
       setLoading(false);
@@ -927,8 +971,8 @@ export default function CredenciamentoSAS() {
         })
         .catch((err) => console.error('Erro no envio do webhook de check-in:', err));
 
-      // b) Registrar credenciamento no banco local (background, não bloqueante)
-      fetch('/api/register-local-credenciamento', {
+      // b) Registrar credenciamento no banco local (agora bloqueante para detectar duplicatas)
+      const localResponse = await fetch('/api/register-local-credenciamento', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -937,16 +981,37 @@ export default function CredenciamentoSAS() {
           attendantName: session.attendantName,
           localEventId: session.localEventId,
         }),
-      })
-        .then(async (r) => {
-          const body = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            console.error('Erro ao registrar no banco local (background):', body?.message || `${r.status} ${r.statusText}`);
-          } else {
-            // success silently handled in background
+      });
+
+      const localData = await localResponse.json();
+
+      if (!localResponse.ok) {
+        console.error('Erro ao registrar no banco local:', localData?.message);
+        // Continue mesmo com erro no local - não bloqueia o fluxo
+      } else {
+        // Verificar se já tinha check-in HOJE
+        if (localData.warning === 'duplicate_checkin_today' && !localData.isNewCheckIn) {
+          const checkInDate = new Date(localData.previousCheckIn.date);
+          const formattedDate = checkInDate.toLocaleDateString('pt-BR');
+          const formattedTime = checkInDate.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+
+          const shouldContinue = confirm(
+            `⚠️ ATENÇÃO: PARTICIPANTE JÁ FEZ CHECK-IN HOJE!\n\n` +
+              `📋 Nome: ${participantData.name}\n` +
+              `📅 Check-in anterior: ${formattedDate} às ${formattedTime}\n` +
+              `👤 Atendente: ${localData.previousCheckIn.attendant}\n\n` +
+              `O check-in foi atualizado. Clique OK para continuar.`
+          );
+
+          if (!shouldContinue) {
+            setLoading(false);
+            return; // Cancela se usuário não quiser continuar
           }
-        })
-        .catch((err) => console.error('Erro na API local (background):', err));
+        }
+      }
     } catch (error) {
       // Somente erros de preparação (antes de disparar background) devem ser mostrados
       setLoading(false);

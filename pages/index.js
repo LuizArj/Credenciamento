@@ -4,6 +4,7 @@ import { Calendar, QrCode, Users, LayoutDashboard } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/router';
+import packageJson from '../package.json';
 
 const menuItems = [
   {
@@ -11,28 +12,28 @@ const menuItems = [
     title: 'Eventos (4Events)',
     description: 'Módulo integrado com a plataforma 4events',
     icon: Calendar,
-    shortcut: '1'
+    shortcut: '1',
   },
   {
     href: '/qrcode-sebrae',
     title: 'Gerar QR Code',
     description: 'Gerar QR Code a partir do CPF',
     icon: QrCode,
-    shortcut: '2'
+    shortcut: '2',
   },
   {
     href: '/credenciamento-sas',
     title: 'Eventos (SAS)',
     description: 'Credenciamento direto dos participantes',
     icon: Users,
-    shortcut: '3'
+    shortcut: '3',
   },
   {
     href: '/admin',
     title: 'Administração',
     description: 'Dashboard de gestão em tempo real',
     icon: LayoutDashboard,
-    shortcut: '4'
+    shortcut: '4',
   },
 ];
 
@@ -52,9 +53,9 @@ export default function Home() {
   // Verificar se usuário tem acesso ao módulo admin
   const userRoles = session?.user?.roles || [];
   const hasAdminAccess = userRoles.includes('admin') || userRoles.includes('manager');
-  
+
   // Filtrar módulos baseado nas permissões
-  const availableModules = menuItems.filter(item => {
+  const availableModules = menuItems.filter((item) => {
     // Se não for o módulo admin, mostrar sempre
     if (item.href !== '/admin') return true;
     // Se for admin, mostrar apenas para admin e manager
@@ -65,7 +66,7 @@ export default function Home() {
   useEffect(() => {
     const handleKeyPress = (event) => {
       if (event.altKey) {
-        const item = availableModules.find(item => item.shortcut === event.key);
+        const item = availableModules.find((item) => item.shortcut === event.key);
         if (item) {
           setActiveModule(item.href);
           setLoading(true);
@@ -94,7 +95,7 @@ export default function Home() {
           height={60}
           className="transition-transform hover:scale-105"
         />
-        <button 
+        <button
           onClick={() => signOut({ callbackUrl: '/login' })}
           className="text-white/80 hover:text-white transition-colors text-sm flex items-center gap-2"
         >
@@ -113,28 +114,26 @@ export default function Home() {
             {availableModules.map((item) => {
               const Icon = item.icon;
               return (
-                <Link 
-                  key={item.href} 
-                  href={item.href} 
+                <Link
+                  key={item.href}
+                  href={item.href}
                   onClick={() => handleModuleClick(item.href)}
                   className="group focus:outline-none focus:ring-2 focus:ring-white/50 rounded-xl"
                 >
-                  <div className={`
+                  <div
+                    className={`
                     relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6
                     hover:bg-white/20 transition-all duration-300
                     ${activeModule === item.href ? 'bg-white/20' : ''}
-                  `}>
+                  `}
+                  >
                     <div className="flex items-start gap-4">
                       <div className="p-3 bg-white/10 rounded-lg">
                         <Icon className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-semibold text-white mb-1">
-                          {item.title}
-                        </h2>
-                        <p className="text-sm text-white/80">
-                          {item.description}
-                        </p>
+                        <h2 className="text-lg font-semibold text-white mb-1">{item.title}</h2>
+                        <p className="text-sm text-white/80">{item.description}</p>
                         <span className="absolute top-4 right-4 text-xs text-white/60">
                           Alt + {item.shortcut}
                         </span>
@@ -150,7 +149,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="w-full p-4 text-center text-white/60 text-sm">
-        © {new Date().getFullYear()} Sebrae - Menu de Operações
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Menu de Operações | v{packageJson.version}
       </footer>
 
       {/* Loading Overlay */}

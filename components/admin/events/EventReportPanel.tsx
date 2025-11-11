@@ -72,6 +72,9 @@ interface EventReport {
     checked_in?: number;
     taxa_credenciamento?: number;
     taxa_presenca?: number;
+    // Multi-day event fields
+    event_days?: number;
+    is_multi_day_event?: boolean;
   };
   participants: Array<{
     id: string;
@@ -86,7 +89,7 @@ interface EventReport {
   }>;
   charts: {
     statusDistribution: Array<{ name: string; value: number }>;
-    dailyCheckIns: Array<{ date: string; count: number }>;
+    dailyCheckIns: Array<{ date: string; count: number; uniqueParticipants?: number }>;
     categoryBreakdown: Array<{ category: string; count: number }>;
   };
 }
@@ -492,7 +495,72 @@ const EventReportPanel: React.FC<EventReportPanelProps> = ({
                             <dt className="text-sm font-medium text-gray-500">Cidade</dt>
                             <dd className="mt-1 text-sm text-gray-900">{report.event.cidade}</dd>
                           </div>
+
+                          {/* Mostrar info de múltiplos dias */}
+                          {report.stats?.is_multi_day_event && (
+                            <>
+                              <div>
+                                <dt className="text-sm font-medium text-gray-500">
+                                  Tipo de Evento
+                                </dt>
+                                <dd className="mt-1 text-sm text-gray-900">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    📅 Evento de Múltiplos Dias
+                                  </span>
+                                </dd>
+                              </div>
+                              <div>
+                                <dt className="text-sm font-medium text-gray-500">
+                                  Dias com Check-in
+                                </dt>
+                                <dd className="mt-1 text-sm text-gray-900">
+                                  {report.stats.event_days}{' '}
+                                  {report.stats.event_days === 1 ? 'dia' : 'dias'}
+                                </dd>
+                              </div>
+                            </>
+                          )}
                         </dl>
+
+                        {/* Tabela de check-ins por dia para eventos múltiplos dias */}
+                        {report.stats?.is_multi_day_event &&
+                          report.charts?.dailyCheckIns?.length > 0 && (
+                            <div className="mt-6">
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                                Check-ins por Dia
+                              </h4>
+                              <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">
+                                      Data
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-600">
+                                      Total Check-ins
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-600">
+                                      Participantes Únicos
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {report.charts.dailyCheckIns.map((day: any, idx: number) => (
+                                    <tr key={idx} className="hover:bg-gray-50">
+                                      <td className="px-4 py-2 text-sm text-gray-900">
+                                        {day.date}
+                                      </td>
+                                      <td className="px-4 py-2 text-sm text-gray-900 text-right font-medium">
+                                        {day.count}
+                                      </td>
+                                      <td className="px-4 py-2 text-sm text-gray-600 text-right">
+                                        {day.uniqueParticipants}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                       </div>
                     </div>
                   )}

@@ -1,7 +1,7 @@
 /**
  * API: Event Report
  * GET /api/admin/events/[id]/report
- * 
+ *
  * Returns comprehensive report for a specific event including:
  * - Event details
  * - Statistics (total participants, check-ins, status distribution)
@@ -91,12 +91,18 @@ export default async function handler(req, res) {
         pendentes: parseInt(stats.pendentes) || 0,
         cancelados: parseInt(stats.cancelados) || 0,
         total_checkins: parseInt(stats.total_checkins) || 0,
-        taxa_credenciamento: stats.total_participants > 0
-          ? ((parseInt(stats.credenciados) + parseInt(stats.checked_in)) / parseInt(stats.total_participants) * 100).toFixed(1)
-          : 0,
-        taxa_presenca: stats.total_participants > 0
-          ? (parseInt(stats.checked_in) / parseInt(stats.total_participants) * 100).toFixed(1)
-          : 0,
+        taxa_credenciamento:
+          stats.total_participants > 0
+            ? (
+                ((parseInt(stats.credenciados) + parseInt(stats.checked_in)) /
+                  parseInt(stats.total_participants)) *
+                100
+              ).toFixed(1)
+            : 0,
+        taxa_presenca:
+          stats.total_participants > 0
+            ? ((parseInt(stats.checked_in) / parseInt(stats.total_participants)) * 100).toFixed(1)
+            : 0,
       };
 
       // Status distribution for pie chart
@@ -113,7 +119,7 @@ export default async function handler(req, res) {
         values: [eventId],
       });
 
-      report.charts.statusDistribution = statusDistResult.rows.map(row => ({
+      report.charts.statusDistribution = statusDistResult.rows.map((row) => ({
         name: translateStatus(row.status),
         value: parseInt(row.count),
       }));
@@ -122,21 +128,29 @@ export default async function handler(req, res) {
       const dailyCheckInsResult = await query({
         text: `
           SELECT 
-            DATE(ci.data_check_in) as date,
-            COUNT(*) as count
+            ci.data_check_in_date as date,
+            COUNT(*) as count,
+            COUNT(DISTINCT p.id) as unique_participants
           FROM check_ins ci
           JOIN registrations r ON r.id = ci.registration_id
+          JOIN participants p ON p.id = r.participant_id
           WHERE r.event_id = $1
-          GROUP BY DATE(ci.data_check_in)
+          GROUP BY ci.data_check_in_date
           ORDER BY date ASC
         `,
         values: [eventId],
       });
 
-      report.charts.dailyCheckIns = dailyCheckInsResult.rows.map(row => ({
+      report.charts.dailyCheckIns = dailyCheckInsResult.rows.map((row) => ({
         date: new Date(row.date).toLocaleDateString('pt-BR'),
         count: parseInt(row.count),
+        uniqueParticipants: parseInt(row.unique_participants),
       }));
+
+      // Adicionar info se evento tem múltiplos dias
+      const eventDays = dailyCheckInsResult.rows.length;
+      report.stats.event_days = eventDays;
+      report.stats.is_multi_day_event = eventDays > 1;
 
       // Category breakdown (fonte)
       const categoryResult = await query({
@@ -153,7 +167,7 @@ export default async function handler(req, res) {
         values: [eventId],
       });
 
-      report.charts.categoryBreakdown = categoryResult.rows.map(row => ({
+      report.charts.categoryBreakdown = categoryResult.rows.map((row) => ({
         category: row.category,
         count: parseInt(row.count),
       }));
@@ -180,7 +194,7 @@ export default async function handler(req, res) {
         values: [eventId],
       });
 
-      report.participants = participantsResult.rows.map(row => ({
+      report.participants = participantsResult.rows.map((row) => ({
         id: row.id,
         nome: row.nome,
         cpf: row.cpf,
@@ -197,7 +211,6 @@ export default async function handler(req, res) {
       success: true,
       data: report,
     });
-
   } catch (error) {
     console.error('Error generating event report:', error);
     return res.status(500).json({
@@ -213,11 +226,11 @@ export default async function handler(req, res) {
  */
 function translateStatus(status) {
   const translations = {
-    'pending': 'Pendente',
-    'confirmed': 'Confirmado',
-    'checked_in': 'Credenciado',
-    'cancelled': 'Cancelado',
-    'waiting_list': 'Lista de Espera',
+    pending: 'Pendente',
+    confirmed: 'Confirmado',
+    checked_in: 'Credenciado',
+    cancelled: 'Cancelado',
+    waiting_list: 'Lista de Espera',
   };
   return translations[status] || status;
 }
