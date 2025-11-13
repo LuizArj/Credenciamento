@@ -3,28 +3,40 @@ import { query } from '../../../lib/config/database';
 
 // Handler da rota de métricas
 async function metricsHandler(req, res) {
-  console.log(`[API] /api/admin/metrics ${req.method} - query=${JSON.stringify(req.query)} body=${req.method==='GET'? '{}': JSON.stringify(req.body ? req.body : {})}`);
+  console.log(
+    `[API] /api/admin/metrics ${req.method} - query=${JSON.stringify(req.query)} body=${req.method === 'GET' ? '{}' : JSON.stringify(req.body ? req.body : {})}`
+  );
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-    try {
+  try {
     // Total de eventos
-    const totalEventsRes = await query('SELECT COUNT(*)::int AS count FROM events WHERE ativo = true');
+    const totalEventsRes = await query(
+      'SELECT COUNT(*)::int AS count FROM events WHERE ativo = true'
+    );
     const totalEvents = totalEventsRes.rows[0]?.count || 0;
 
     // Total de participantes
-    const totalParticipantsRes = await query('SELECT COUNT(*)::int AS count FROM participants WHERE ativo = true');
+    const totalParticipantsRes = await query(
+      'SELECT COUNT(*)::int AS count FROM participants WHERE ativo = true'
+    );
     const totalParticipants = totalParticipantsRes.rows[0]?.count || 0;
 
     // Eventos ativos
-    const activeEventsRes = await query("SELECT COUNT(*)::int AS count FROM events WHERE status = $1 AND ativo = true", ['active']);
+    const activeEventsRes = await query(
+      'SELECT COUNT(*)::int AS count FROM events WHERE status = $1 AND ativo = true',
+      ['active']
+    );
     const activeEvents = activeEventsRes.rows[0]?.count || 0;
 
     // Check-ins de hoje
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const participantsTodayRes = await query('SELECT COUNT(*)::int AS count FROM check_ins WHERE data_check_in >= $1', [today.toISOString()]);
+    const participantsTodayRes = await query(
+      'SELECT COUNT(*)::int AS count FROM check_ins WHERE data_check_in >= $1',
+      [today.toISOString()]
+    );
     const participantsToday = participantsTodayRes.rows[0]?.count || 0;
 
     // Credenciamentos recentes (últimos 10)
@@ -52,10 +64,16 @@ async function metricsHandler(req, res) {
       ORDER BY registrations_count DESC
       LIMIT 5
     `);
-    const eventsBreakdown = (eventsWithParticipantsRes.rows || []).map((ev) => ({ name: ev.nome, participants: ev.registrations_count || 0 }));
+    const eventsBreakdown = (eventsWithParticipantsRes.rows || []).map((ev) => ({
+      name: ev.nome,
+      participants: ev.registrations_count || 0,
+    }));
 
     // Check-ins por hora (hoje)
-    const todayCheckInsRes = await query('SELECT data_check_in FROM check_ins WHERE data_check_in >= $1', [today.toISOString()]);
+    const todayCheckInsRes = await query(
+      'SELECT data_check_in FROM check_ins WHERE data_check_in >= $1',
+      [today.toISOString()]
+    );
     const todayCheckIns = todayCheckInsRes.rows || [];
 
     // Agrupar por hora
@@ -66,7 +84,10 @@ async function metricsHandler(req, res) {
       hourlyCredentials[hourKey] = (hourlyCredentials[hourKey] || 0) + 1;
     });
 
-    const credentialingByHour = Object.entries(hourlyCredentials).map(([hour, count]) => ({ hour, count }));
+    const credentialingByHour = Object.entries(hourlyCredentials).map(([hour, count]) => ({
+      hour,
+      count,
+    }));
 
     const metrics = {
       totalEvents: totalEvents || 0,
@@ -85,6 +106,6 @@ async function metricsHandler(req, res) {
   }
 }
 
-// Exporta o handler protegido
-const handler = withApiAuth(metricsHandler, ['manage_users']);
+// Exporta o handler protegido - permite todos os usuários autenticados
+const handler = withApiAuth(metricsHandler, []);
 export default handler;

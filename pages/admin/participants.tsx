@@ -6,11 +6,12 @@
  * - Participant creation and editing
  * - Participant report panel with history
  * - Export to Excel/PDF
+ * - RESTRICTED: Admin-only access
  *
  * @module pages/admin/participants
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '../../components/AdminLayout';
 import { withAdminProtection } from '../../components/withAdminProtection';
@@ -54,12 +55,23 @@ const ParticipantsManagement: React.FC = () => {
   const [filters, setFilters] = useState<FilterValues>({ search: '', status: '' });
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [sortBy, setSortBy] = useState<'nome' | 'created_at'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   // Enriquecimento em massa
   const [isEnrichModalOpen, setIsEnrichModalOpen] = useState(false);
-  const [enrichProgress, setEnrichProgress] = useState({ processed: 0, total: 0, enriched: 0, failed: 0 });
+  const [enrichProgress, setEnrichProgress] = useState({
+    processed: 0,
+    total: 0,
+    enriched: 0,
+    failed: 0,
+  });
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichResults, setEnrichResults] = useState<any[]>([]);
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -76,11 +88,15 @@ const ParticipantsManagement: React.FC = () => {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['participants', filters],
+    queryKey: ['participants', filters, currentPage, itemsPerPage, sortBy, sortOrder],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
       if (filters.status) params.append('status', filters.status);
+      params.append('page', currentPage.toString());
+      params.append('limit', itemsPerPage.toString());
+      params.append('sortBy', sortBy);
+      params.append('sortOrder', sortOrder);
 
       const response = await fetch(`/api/admin/participants?${params.toString()}`);
       if (!response.ok) {
@@ -91,6 +107,70 @@ const ParticipantsManagement: React.FC = () => {
   });
 
   const participants: Participant[] = participantsResponse?.participants || [];
+  const pagination = participantsResponse?.pagination || {
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+  };
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
+
+  // Handle column sorting
+  const handleSort = (column: 'nome' | 'created_at') => {
+    if (sortBy === column) {
+      // Toggle order if clicking same column
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Default to descending for new column
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting
+  };
+
+  // Sort icon component
+  const SortIcon = ({ column }: { column: 'nome' | 'created_at' }) => {
+    if (sortBy !== column) {
+      return (
+        <svg
+          className="w-4 h-4 ml-1 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+          />
+        </svg>
+      );
+    }
+    return sortOrder === 'asc' ? (
+      <svg
+        className="w-4 h-4 ml-1 text-blue-600"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg
+        className="w-4 h-4 ml-1 text-blue-600"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
 
   // Mutations
   const createParticipantMutation = useMutation({
@@ -262,6 +342,11 @@ const ParticipantsManagement: React.FC = () => {
 
   // Enriquecimento em massa
   const handleStartEnrichment = async () => {
+    if (selectedParticipants.length === 0) {
+      alert('Selecione pelo menos um participante para enriquecer os dados.');
+      return;
+    }
+
     setIsEnriching(true);
     setEnrichProgress({ processed: 0, total: 0, enriched: 0, failed: 0 });
     setEnrichResults([]);
@@ -270,7 +355,7 @@ const ParticipantsManagement: React.FC = () => {
       const response = await fetch('/api/admin/enrich-participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 50 }),
+        body: JSON.stringify({ participantIds: selectedParticipants }),
       });
 
       if (!response.ok) {
@@ -278,19 +363,23 @@ const ParticipantsManagement: React.FC = () => {
       }
 
       const result = await response.json();
-      
+
       setEnrichProgress({
         processed: result.processed,
         total: result.processed,
         enriched: result.enriched,
         failed: result.failed,
       });
-      
+
       setEnrichResults(result.details || []);
-      
+
       // Atualizar lista de participantes
       queryClient.invalidateQueries({ queryKey: ['participants'] });
-      
+
+      // Limpar seleções após sucesso
+      setSelectedParticipants([]);
+      setSelectAll(false);
+
       alert(`Enriquecimento concluído!\n${result.enriched} atualizados, ${result.failed} falharam`);
     } catch (err) {
       console.error('Enrichment error:', err);
@@ -298,6 +387,33 @@ const ParticipantsManagement: React.FC = () => {
     } finally {
       setIsEnriching(false);
     }
+  };
+
+  const handleOpenEnrichModal = () => {
+    // Não limpar selectedParticipants aqui - preservar seleção do usuário
+    setIsEnrichModalOpen(true);
+    setEnrichProgress({ processed: 0, total: 0, enriched: 0, failed: 0 });
+    setEnrichResults([]);
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isChecked = e.target.checked;
+    setSelectAll(isChecked);
+    if (isChecked) {
+      setSelectedParticipants(participants.map((p) => p.id));
+    } else {
+      setSelectedParticipants([]);
+    }
+  };
+
+  const handleSelectParticipant = (id: string) => {
+    setSelectedParticipants((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((pId) => pId !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -347,8 +463,9 @@ const ParticipantsManagement: React.FC = () => {
         </div>
         <div className="mt-4 flex md:mt-0 md:ml-4 gap-2">
           <button
-            onClick={() => setIsEnrichModalOpen(true)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            onClick={handleOpenEnrichModal}
+            disabled={selectedParticipants.length === 0}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -358,7 +475,7 @@ const ParticipantsManagement: React.FC = () => {
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
             </svg>
-            Enriquecer Dados (SAS)
+            Enriquecer Dados ({selectedParticipants.length})
           </button>
           <button
             onClick={() => openModal()}
@@ -383,17 +500,47 @@ const ParticipantsManagement: React.FC = () => {
         onFilterChange={setFilters}
         // Status filter removido – listamos apenas credenciados
         statusOptions={[]}
-        actions={[
-          {
-            label: 'Exportar Todos',
-            onClick: () => {}, // Handled by ExportButton
-            icon: 'download',
-          },
-        ]}
+        actions={[]}
       />
 
       {/* Export Button */}
-      <div className="mb-6 flex justify-end">
+      <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+          <div className="text-sm text-gray-700">
+            Total de participantes:{' '}
+            <span className="font-semibold text-blue-600">{pagination.total}</span>
+            {filters.search ? (
+              <span className="ml-2 text-gray-500">
+                (mostrando {participants.length} resultado{participants.length !== 1 ? 's' : ''}{' '}
+                filtrado
+                {participants.length !== 1 ? 's' : ''})
+              </span>
+            ) : null}
+          </div>
+
+          {/* Page Size Selector */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="pageSize" className="text-sm text-gray-600">
+              Mostrar:
+            </label>
+            <select
+              id="pageSize"
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-sm text-gray-600">por página</span>
+          </div>
+        </div>
+
         <ExportButton onExport={handleExportAll} label="Exportar Todos os Participantes" />
       </div>
 
@@ -405,17 +552,25 @@ const ParticipantsManagement: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Nome
+                    <th className="px-6 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectAll && participants.length > 0}
+                        onChange={handleSelectAll}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                    </th>
+                    <th
+                      onClick={() => handleSort('nome')}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    >
+                      <div className="flex items-center">
+                        Nome
+                        <SortIcon column="nome" />
+                      </div>
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       CPF
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Telefone
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Empresa
@@ -429,30 +584,49 @@ const ParticipantsManagement: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {participants.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
+                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
                         Nenhum participante encontrado
                       </td>
                     </tr>
                   ) : (
                     participants.map((participant) => (
-                      <tr
-                        key={participant.id}
-                        onClick={() => handleRowClick(participant.id)}
-                        className="hover:bg-gray-50 cursor-pointer transition-colors"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <tr key={participant.id} className="hover:bg-gray-50 transition-colors">
+                        <td
+                          className="px-6 py-4 whitespace-nowrap"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedParticipants.includes(participant.id)}
+                            onChange={() => handleSelectParticipant(participant.id)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        </td>
+                        <td
+                          className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 cursor-pointer"
+                          onClick={() => handleRowClick(participant.id)}
+                        >
                           {participant.nome}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatCPF(participant.cpf)}
+                        <td
+                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer"
+                          onClick={() => handleRowClick(participant.id)}
+                        >
+                          {formatCPF(participant.cpf).replace(
+                            /^(\d{3})\.(\d{3})\.(\d{3}-\d{2})$/,
+                            '$1.***.***-**'
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.telefone || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td
+                          className="px-6 py-4 text-sm text-gray-500 cursor-pointer max-w-xs truncate"
+                          onClick={() => handleRowClick(participant.id)}
+                          title={
+                            participant.company?.razao_social ||
+                            participant.company?.nome_fantasia ||
+                            participant.empresa ||
+                            'N/A'
+                          }
+                        >
                           {participant.company?.razao_social ||
                             participant.company?.nome_fantasia ||
                             participant.empresa ||
@@ -486,6 +660,106 @@ const ParticipantsManagement: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                <div className="flex-1 flex justify-between sm:hidden">
+                  <button
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(Math.min(pagination.totalPages, currentPage + 1))}
+                    disabled={currentPage === pagination.totalPages}
+                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Próxima
+                  </button>
+                </div>
+                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-gray-700">
+                      Mostrando{' '}
+                      <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> a{' '}
+                      <span className="font-medium">
+                        {Math.min(currentPage * itemsPerPage, pagination.total)}
+                      </span>{' '}
+                      de <span className="font-medium">{pagination.total}</span> resultados
+                    </p>
+                  </div>
+                  <div>
+                    <nav
+                      className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                      aria-label="Pagination"
+                    >
+                      <button
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Anterior</span>
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+
+                      {/* Page Numbers */}
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNumber;
+                        if (pagination.totalPages <= 5) {
+                          pageNumber = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNumber = i + 1;
+                        } else if (currentPage >= pagination.totalPages - 2) {
+                          pageNumber = pagination.totalPages - 4 + i;
+                        } else {
+                          pageNumber = currentPage - 2 + i;
+                        }
+
+                        return (
+                          <button
+                            key={pageNumber}
+                            onClick={() => setCurrentPage(pageNumber)}
+                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                              currentPage === pageNumber
+                                ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {pageNumber}
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        onClick={() =>
+                          setCurrentPage(Math.min(pagination.totalPages, currentPage + 1))
+                        }
+                        disabled={currentPage === pagination.totalPages}
+                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Próxima</span>
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -622,8 +896,18 @@ const ParticipantsManagement: React.FC = () => {
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    <svg
+                      className="h-6 w-6 text-blue-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
                     </svg>
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
@@ -631,10 +915,24 @@ const ParticipantsManagement: React.FC = () => {
                       Enriquecer Dados via SAS
                     </h3>
                     <div className="mt-4">
-                      <p className="text-sm text-gray-500 mb-4">
-                        Esta função busca dados atualizados no sistema SAS (email, telefone, empresa) 
-                        para participantes com informações incompletas ou temporárias.
-                      </p>
+                      {selectedParticipants.length === 0 ? (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
+                          <p className="text-sm text-yellow-800">
+                            <strong>⚠️ Nenhum participante selecionado</strong>
+                          </p>
+                          <p className="text-sm text-yellow-700 mt-2">
+                            Selecione os participantes que deseja enriquecer usando as caixas de
+                            seleção na tabela antes de iniciar o processo.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 mb-4">
+                          Buscar dados atualizados no sistema SAS (email, telefone, empresa) para{' '}
+                          <strong>{selectedParticipants.length}</strong> participante
+                          {selectedParticipants.length !== 1 ? 's' : ''} selecionado
+                          {selectedParticipants.length !== 1 ? 's' : ''}.
+                        </p>
+                      )}
 
                       {!isEnriching && enrichProgress.total === 0 && (
                         <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
@@ -642,10 +940,10 @@ const ParticipantsManagement: React.FC = () => {
                             <strong>Como funciona:</strong>
                           </p>
                           <ul className="list-disc list-inside text-sm text-blue-700 mt-2 space-y-1">
-                            <li>Identifica participantes com email temporário (@temp.com)</li>
-                            <li>Busca dados no SAS um por um</li>
+                            <li>Busca dados no SAS para os participantes selecionados</li>
                             <li>Atualiza email, telefone e empresa quando disponíveis</li>
-                            <li>Processa até 50 participantes por vez</li>
+                            <li>Processo individual para cada participante</li>
+                            <li>Você pode acompanhar o progresso em tempo real</li>
                           </ul>
                         </div>
                       )}
@@ -654,13 +952,23 @@ const ParticipantsManagement: React.FC = () => {
                         <div className="space-y-4">
                           <div className="bg-gray-50 rounded-md p-4">
                             <div className="flex justify-between text-sm text-gray-700 mb-2">
-                              <span>Progresso: {enrichProgress.processed} participantes processados</span>
-                              <span>{Math.round((enrichProgress.processed / Math.max(enrichProgress.total, 1)) * 100)}%</span>
+                              <span>
+                                Progresso: {enrichProgress.processed} participantes processados
+                              </span>
+                              <span>
+                                {Math.round(
+                                  (enrichProgress.processed / Math.max(enrichProgress.total, 1)) *
+                                    100
+                                )}
+                                %
+                              </span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2.5">
                               <div
                                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                                style={{ width: `${(enrichProgress.processed / Math.max(enrichProgress.total, 1)) * 100}%` }}
+                                style={{
+                                  width: `${(enrichProgress.processed / Math.max(enrichProgress.total, 1)) * 100}%`,
+                                }}
                               />
                             </div>
                           </div>
@@ -668,11 +976,15 @@ const ParticipantsManagement: React.FC = () => {
                           <div className="grid grid-cols-2 gap-4">
                             <div className="bg-green-50 border border-green-200 rounded-md p-3">
                               <p className="text-xs text-green-600 font-medium">Enriquecidos</p>
-                              <p className="text-2xl font-bold text-green-700">{enrichProgress.enriched}</p>
+                              <p className="text-2xl font-bold text-green-700">
+                                {enrichProgress.enriched}
+                              </p>
                             </div>
                             <div className="bg-red-50 border border-red-200 rounded-md p-3">
                               <p className="text-xs text-red-600 font-medium">Falhas</p>
-                              <p className="text-2xl font-bold text-red-700">{enrichProgress.failed}</p>
+                              <p className="text-2xl font-bold text-red-700">
+                                {enrichProgress.failed}
+                              </p>
                             </div>
                           </div>
 
@@ -701,20 +1013,34 @@ const ParticipantsManagement: React.FC = () => {
                               <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-gray-50">
                                   <tr>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">CPF</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nome</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                      CPF
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                      Nome
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                      Status
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
                                   {enrichResults.map((result, idx) => (
                                     <tr key={idx}>
-                                      <td className="px-3 py-2 text-xs text-gray-900">{result.cpf}</td>
-                                      <td className="px-3 py-2 text-xs text-gray-700">{result.nome}</td>
+                                      <td className="px-3 py-2 text-xs text-gray-900">
+                                        {result.cpf}
+                                      </td>
+                                      <td className="px-3 py-2 text-xs text-gray-700">
+                                        {result.nome}
+                                      </td>
                                       <td className="px-3 py-2 text-xs">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                          result.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                        }`}>
+                                        <span
+                                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                            result.status === 'success'
+                                              ? 'bg-green-100 text-green-800'
+                                              : 'bg-red-100 text-red-800'
+                                          }`}
+                                        >
                                           {result.status === 'success' ? '✓ Sucesso' : '✗ Falha'}
                                         </span>
                                       </td>
@@ -734,7 +1060,12 @@ const ParticipantsManagement: React.FC = () => {
                 {!isEnriching && enrichProgress.total === 0 && (
                   <button
                     type="button"
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
+                    disabled={selectedParticipants.length === 0}
+                    className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm ${
+                      selectedParticipants.length === 0
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                     onClick={handleStartEnrichment}
                   >
                     Iniciar Enriquecimento
@@ -757,8 +1088,13 @@ const ParticipantsManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="w-full p-4 text-center text-gray-600 text-sm">
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento
+      </footer>
     </AdminLayout>
   );
 };
 
-export default withAdminProtection(ParticipantsManagement);
+export default withAdminProtection(ParticipantsManagement, ['admin_only']);

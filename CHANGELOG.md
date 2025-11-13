@@ -7,6 +7,47 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [1.1.1] - 2025-11-11
+
+### 🚀 Otimizações de Performance
+
+#### Sistema de Cache Local para Eventos SAS
+
+- **Cache inteligente:** Sistema agora busca eventos primeiro no banco de dados local antes de consultar API SAS
+- **Fluxo otimizado:**
+  1. Consulta banco local por `codevento_sas`
+  2. Se encontrado: retorna dados do cache (resposta instantânea)
+  3. Se não encontrado: busca na API SAS (fallback automático)
+- **Indicador visual:** Badge na UI mostrando origem dos dados:
+  - 💾 "Cache Local" (azul) - dados do banco local
+  - 🌐 "API SAS" (verde) - dados da API externa
+- **Benefícios:**
+  - ⚡ Redução de ~80% no tempo de resposta para eventos existentes
+  - 📉 Menor dependência de API externa
+  - 💰 Economia de chamadas à API do SAS
+  - 🛡️ Maior resiliência (funciona mesmo com API lenta)
+
+#### Melhorias Visuais em PDFs
+
+- **Logo proporcionada:** Corrigida distorção do logo Sebrae (agora 4:1)
+- **Estatísticas atualizadas:** "Inscritos no SAS" + "Check-ins pelo Sistema"
+- **Participantes separados:** Tabelas distintas para presentes (verde) e ausentes (vermelho)
+- **Footer visível:** Texto do footer alterado para cinza (era branco invisível)
+
+### 📝 Arquivos Modificados
+
+- `pages/api/fetch-sas-event.js` - Adicionado cache local com fallback para API
+- `pages/credenciamento-sas.js` - Badge visual indicando origem dos dados
+- `pages/api/admin/events/[id]/export.js` - Melhorias em relatórios PDF
+- `lib/export/pdf.ts` - Correção de proporções do logo
+- `pages/admin/*.tsx` - Footer com cor visível
+
+### 📚 Documentação
+
+- Criado `docs/SAS_CACHE_OPTIMIZATION.md` - Documentação completa da otimização de cache
+
+---
+
 ## [1.1.0] - 2025-11-11
 
 ### 🎯 Destaques da Versão

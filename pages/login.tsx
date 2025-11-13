@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
+import packageJson from '../package.json';
 
 export default function Login() {
   const { data: session } = useSession();
@@ -94,7 +95,8 @@ export default function Login() {
 
       {/* Footer */}
       <footer className="w-full p-4 text-center text-white/60 text-sm">
-        © {new Date().getFullYear()} Sebrae - Sistema de Credenciamento
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento | v
+        {packageJson.version}
       </footer>
 
       {/* Loading Overlay */}

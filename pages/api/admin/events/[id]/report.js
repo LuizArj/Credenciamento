@@ -147,10 +147,27 @@ export default async function handler(req, res) {
         uniqueParticipants: parseInt(row.unique_participants),
       }));
 
-      // Adicionar info se evento tem múltiplos dias
-      const eventDays = dailyCheckInsResult.rows.length;
+      // Verificar se evento tem múltiplos dias baseado na data_inicio e data_fim
+      const dataInicio = event.data_inicio ? new Date(event.data_inicio) : null;
+      const dataFim = event.data_fim ? new Date(event.data_fim) : null;
+
+      let isMultiDay = false;
+      let eventDays = 1;
+
+      if (dataInicio && dataFim) {
+        // Calcular diferença em dias entre data_inicio e data_fim
+        const diffTime = Math.abs(dataFim.getTime() - dataInicio.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 para incluir o dia inicial
+        eventDays = diffDays;
+        isMultiDay = diffDays > 1;
+      } else if (dataInicio) {
+        // Se só tem data_inicio, considerar 1 dia
+        eventDays = 1;
+        isMultiDay = false;
+      }
+
       report.stats.event_days = eventDays;
-      report.stats.is_multi_day_event = eventDays > 1;
+      report.stats.is_multi_day_event = isMultiDay;
 
       // Category breakdown (fonte)
       const categoryResult = await query({

@@ -515,13 +515,7 @@ const EventsManagement: React.FC = () => {
             { value: 'inactive', label: 'Inativo' },
           ]}
           showDateFilters={true}
-          actions={[
-            {
-              label: 'Exportar Todos',
-              onClick: () => {}, // Handled by ExportButton
-              icon: 'download',
-            },
-          ]}
+          actions={[]}
         />
         {/* Total de eventos e Export Button */}
         <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1185,6 +1179,11 @@ const EventsManagement: React.FC = () => {
           showSyncButton={true}
         />
       )}
+
+      {/* Footer */}
+      <footer className="w-full p-4 text-center text-gray-600 text-sm">
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento
+      </footer>
     </AdminLayout>
   );
 };

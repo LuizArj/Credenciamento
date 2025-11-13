@@ -1,3 +1,5 @@
+import { query } from '../../lib/config/database';
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
@@ -35,6 +37,89 @@ export default async function handler(req, res) {
         message: 'Código do evento é obrigatório',
       });
     }
+
+    // ============================================================
+    // STEP 1: Check local database first
+    // ============================================================
+    console.log(`[fetch-sas-event] Searching for event ${codEvento} in local database...`);
+
+    try {
+      const localResult = await query(
+        `SELECT 
+          id,
+          nome,
+          descricao,
+          data_inicio,
+          data_fim,
+          local,
+          endereco,
+          capacidade,
+          modalidade,
+          tipo_evento as instrumento,
+          status as situacao,
+          publico_alvo as tipo_publico,
+          gerente,
+          coordenador,
+          solucao,
+          unidade,
+          tipo_acao,
+          codevento_sas
+        FROM events 
+        WHERE codevento_sas = $1 
+        LIMIT 1`,
+        [codEvento]
+      );
+
+      if (localResult.rows.length > 0) {
+        const localEvent = localResult.rows[0];
+
+        console.log(`[fetch-sas-event] Event ${codEvento} found in local database!`);
+
+        // Normalize local event to match SAS format
+        const eventoNormalizado = {
+          id: localEvent.codevento_sas,
+          nome: localEvent.nome,
+          dataEvento: localEvent.data_inicio,
+          periodoInicial: localEvent.data_inicio,
+          periodoFinal: localEvent.data_fim,
+          descricao: localEvent.descricao || localEvent.nome,
+          local: localEvent.local || localEvent.endereco || '',
+          capacidade: localEvent.capacidade || 0,
+          cargaHoraria: 0, // Not tracked in events table
+          modalidade: localEvent.modalidade || 'Presencial',
+          instrumento: localEvent.instrumento || localEvent.tipo_evento || '',
+          situacao: localEvent.situacao || localEvent.status || 'active',
+          cidade: '', // Not tracked in events table
+          vagasDisponiveis: 0, // Not tracked locally
+          minParticipante: 0,
+          maxParticipante: localEvent.capacidade || 0,
+          preco: 0,
+          gratuito: true,
+          tipoPublico: localEvent.tipo_publico || '',
+          projeto: localEvent.solucao || '',
+          unidadeOrganizacional: localEvent.unidade || '',
+          rawData: localEvent,
+        };
+
+        return res.status(200).json({
+          message: 'Evento encontrado no banco de dados local',
+          endpoint: 'LocalDatabase',
+          source: 'cache',
+          evento: eventoNormalizado,
+        });
+      }
+
+      console.log(
+        `[fetch-sas-event] Event ${codEvento} not found locally. Fetching from SAS API...`
+      );
+    } catch (dbError) {
+      console.error('[fetch-sas-event] Database query error:', dbError);
+      // Continue to SAS API on database error
+    }
+
+    // ============================================================
+    // STEP 2: Fetch from SAS API (original logic)
+    // ============================================================
 
     const UF = process.env.SEBRAE_COD_UF || '24';
     const BASE = 'https://sas.sebrae.com.br/SasServiceDisponibilizacoes/Evento';
@@ -168,8 +253,9 @@ export default async function handler(req, res) {
     };
 
     return res.status(200).json({
-      message: 'Evento encontrado com sucesso',
+      message: 'Evento encontrado na API do SAS',
       endpoint: endpointUsado,
+      source: 'sas-api',
       evento: eventoNormalizado,
     });
   } catch (error) {

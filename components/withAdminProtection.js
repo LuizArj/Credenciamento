@@ -16,8 +16,18 @@ export function withAdminProtection(WrappedComponent, requiredPermissions = ['ma
         router.replace('/login');
         return;
       }
-      // NOTE: permission checks removed so any authenticated user can access admin modules
-    }, [session, status, router]);
+
+      // Verifica se a página requer permissão de administrador
+      const requiresAdmin = requiredPermissions.includes('admin_only');
+      const userRoles = session.user?.roles || [];
+      const isAdmin = userRoles.includes('admin');
+
+      // Se requer admin e usuário não é admin, redireciona
+      if (requiresAdmin && !isAdmin) {
+        router.replace('/admin/unauthorized');
+        return;
+      }
+    }, [session, status, router, requiredPermissions]);
 
     // Enquanto verifica autenticação, mostra loading
     if (status === 'loading' || !session) {

@@ -66,7 +66,9 @@ export default function PermissionsManagement() {
 
       // Verificar se o usuário tem permissão
       if (usersResponse.status === 403 || rolesResponse.status === 403) {
-        setError('Você não tem permissão para acessar esta página. Apenas administradores podem gerenciar permissões.');
+        setError(
+          'Você não tem permissão para acessar esta página. Apenas administradores podem gerenciar permissões.'
+        );
         setLoading(false);
         return;
       }
@@ -88,11 +90,12 @@ export default function PermissionsManagement() {
     }
   };
 
-  const handleRoleChange = async (userId, roleId, hasRole) => {
+  const handleRoleChange = async (userId, roleId) => {
     try {
       setError(null);
 
-      const response = await fetch('/api/admin/permissions', {
+      // Quando seleciona um role, remove todos os outros e adiciona apenas o selecionado
+      const response = await fetch('/api/admin/permissions/set-single-role', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -100,7 +103,6 @@ export default function PermissionsManagement() {
         body: JSON.stringify({
           userId,
           roleId,
-          hasRole,
         }),
       });
 
@@ -111,7 +113,7 @@ export default function PermissionsManagement() {
 
       // Recarregar dados para refletir as mudanças
       await loadData();
-      setSuccessMessage('Permissões atualizadas com sucesso!');
+      setSuccessMessage('Perfil atualizado com sucesso!');
 
       // Limpar mensagem de sucesso após 3 segundos
       setTimeout(() => setSuccessMessage(''), 3000);
@@ -208,10 +210,11 @@ export default function PermissionsManagement() {
                     {roles.map((role) => (
                       <td key={role.id} className="px-6 py-4 whitespace-nowrap text-center">
                         <input
-                          type="checkbox"
-                          className="focus:ring-sebrae-blue h-4 w-4 text-sebrae-blue border-gray-300 rounded"
+                          type="radio"
+                          name={`role-${user.id}`}
+                          className="focus:ring-sebrae-blue h-4 w-4 text-sebrae-blue border-gray-300"
                           checked={hasRole(user, role.id)}
-                          onChange={(e) => handleRoleChange(user.id, role.id, e.target.checked)}
+                          onChange={() => handleRoleChange(user.id, role.id)}
                         />
                       </td>
                     ))}
@@ -283,6 +286,12 @@ export default function PermissionsManagement() {
           {/* Modals */}
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="w-full p-4 text-center text-gray-600 text-sm">
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento | v
+        {require('../../package.json').version}
+      </footer>
     </AdminLayout>
   );
 }

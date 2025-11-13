@@ -149,7 +149,8 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="w-full p-4 text-center text-white/60 text-sm">
-        © {new Date().getFullYear()} UTIC - Sebrae RR - Menu de Operações | v{packageJson.version}
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento | v
+        {packageJson.version}
       </footer>
 
       {/* Loading Overlay */}

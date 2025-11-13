@@ -3,20 +3,19 @@ import { useSession, signOut } from 'next-auth/react';
 import { useEffect } from 'react';
 import Head from 'next/head';
 import Image from 'next/image';
-// Permission checks disabled: allow any authenticated user to access admin modules
 
-export default function AdminLayout({ children, title, requiredPermissions = ['manage_users'] }) {
+export default function AdminLayout({ children, title }) {
   const router = useRouter();
   const { data: session, status } = useSession();
 
-  // Redireciona para login se não tiver permissão (apenas no cliente)
+  // Redireciona para login se não estiver autenticado
   useEffect(() => {
     if (status === 'loading') return; // Ainda carregando
 
     if (!session) {
       router.replace('/login');
     }
-  }, [session, status, router, requiredPermissions]);
+  }, [session, status, router]);
 
   // Mostra loading enquanto verifica a sessão
   if (status === 'loading') {
@@ -35,33 +34,91 @@ export default function AdminLayout({ children, title, requiredPermissions = ['m
     return null; // Redirecionamento para login em andamento
   }
 
-  const navigation = [
-    { name: 'Dashboard', href: '/painel-admin', icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-      </svg>
-    )},
-    { name: 'Eventos', href: '/admin/events', icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    )},
-    { name: 'Participantes', href: '/admin/participants', icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-      </svg>
-    )},
-    { name: 'Importar', href: '/admin/import', icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-      </svg>
-    )},
-    { name: 'Permissões', href: '/admin/permissions', icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-      </svg>
-    )}
+  // Check if user is admin
+  const userRoles = session?.user?.roles || [];
+  const isAdmin = userRoles.includes('admin');
+
+  // Define all navigation items
+  const allNavigation = [
+    {
+      name: 'Dashboard',
+      href: '/painel-admin',
+      adminOnly: false,
+      icon: (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: 'Eventos',
+      href: '/admin/events',
+      adminOnly: false,
+      icon: (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: 'Participantes',
+      href: '/admin/participants',
+      adminOnly: true,
+      icon: (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: 'Importar',
+      href: '/admin/import',
+      adminOnly: true,
+      icon: (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: 'Permissões',
+      href: '/admin/permissions',
+      adminOnly: true,
+      icon: (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+          />
+        </svg>
+      ),
+    },
   ];
+
+  // Filter navigation based on user role
+  const navigation = allNavigation.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -74,7 +131,7 @@ export default function AdminLayout({ children, title, requiredPermissions = ['m
         <div className="flex-1 flex flex-col min-h-0 bg-sebrae-blue-dark">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-4">
-              <button 
+              <button
                 onClick={() => router.push('/')}
                 className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sebrae-blue-dark rounded"
                 title="Voltar ao início"
@@ -115,14 +172,22 @@ export default function AdminLayout({ children, title, requiredPermissions = ['m
             >
               <div className="flex items-center">
                 <div>
-                  <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  <svg
+                    className="h-8 w-8 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                    />
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-white">
-                    Sair do Sistema
-                  </p>
+                  <p className="text-sm font-medium text-white">Sair do Sistema</p>
                 </div>
               </div>
             </button>
@@ -168,10 +233,7 @@ export default function AdminLayout({ children, title, requiredPermissions = ['m
             height={30}
             className="h-6 w-auto"
           />
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="text-white text-sm"
-          >
+          <button onClick={() => signOut({ callbackUrl: '/login' })} className="text-white text-sm">
             Sair
           </button>
         </div>
@@ -181,9 +243,7 @@ export default function AdminLayout({ children, title, requiredPermissions = ['m
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
             </div>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              {children}
-            </div>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">{children}</div>
           </div>
         </main>
       </div>

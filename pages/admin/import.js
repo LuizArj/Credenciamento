@@ -1,28 +1,73 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/router';
 import AdminLayout from '../../components/AdminLayout';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, AlertTriangle, Download } from 'lucide-react';
+import {
+  Upload,
+  FileSpreadsheet,
+  CheckCircle,
+  AlertCircle,
+  AlertTriangle,
+  Download,
+} from 'lucide-react';
 
-export default function ImportParticipantsPage() {
-  const { data: session } = useSession();
+function ImportParticipantsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
+
+  // Check admin access
+  useEffect(() => {
+    if (status === 'loading') return;
+
+    if (!session) {
+      router.replace('/login');
+      return;
+    }
+
+    const userRoles = session.user?.roles || [];
+    const isAdmin = userRoles.includes('admin');
+
+    if (!isAdmin) {
+      router.replace('/admin/unauthorized');
+    }
+  }, [session, status, router]);
+
+  // Show loading while checking authentication
+  if (status === 'loading' || !session) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  // Check if user is admin
+  const userRoles = session.user?.roles || [];
+  const isAdmin = userRoles.includes('admin');
+
+  if (!isAdmin) {
+    return null; // Redirect in progress
+  }
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       // Validar extensão
       const validExtensions = ['.xlsx', '.xls', '.csv'];
-      const fileExtension = selectedFile.name.substring(selectedFile.name.lastIndexOf('.')).toLowerCase();
-      
+      const fileExtension = selectedFile.name
+        .substring(selectedFile.name.lastIndexOf('.'))
+        .toLowerCase();
+
       if (!validExtensions.includes(fileExtension)) {
         setError('Formato de arquivo inválido. Use Excel (.xlsx, .xls) ou CSV (.csv)');
         setFile(null);
         return;
       }
-      
+
       setFile(selectedFile);
       setError('');
       setResults(null);
@@ -56,11 +101,10 @@ export default function ImportParticipantsPage() {
 
       setResults(data);
       setFile(null);
-      
+
       // Limpar input de arquivo
       const fileInput = document.getElementById('file-upload');
       if (fileInput) fileInput.value = '';
-      
     } catch (err) {
       console.error('Erro na importação:', err);
       setError(err.message);
@@ -78,11 +122,11 @@ export default function ImportParticipantsPage() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     link.setAttribute('href', url);
     link.setAttribute('download', 'template-importacao.csv');
     link.style.visibility = 'hidden';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -119,11 +163,15 @@ export default function ImportParticipantsPage() {
                 <span className="text-gray-700">- Nome completo (obrigatório)</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">ORIGEM</span>
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">
+                  ORIGEM
+                </span>
                 <span className="text-gray-700">- SAS ou CPE (opcional, padrão: SAS)</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">EMPRESA</span>
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">
+                  EMPRESA
+                </span>
                 <span className="text-gray-700">- Nome da empresa (opcional)</span>
               </li>
               <li className="flex items-start gap-2">
@@ -131,11 +179,15 @@ export default function ImportParticipantsPage() {
                 <span className="text-gray-700">- Data da inscrição (opcional)</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">Evento_Nome</span>
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">
+                  Evento_Nome
+                </span>
                 <span className="text-gray-700">- Nome do evento (obrigatório)</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">Cod_Evento</span>
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">
+                  Cod_Evento
+                </span>
                 <span className="text-gray-700">- Código do evento no SAS (opcional)</span>
               </li>
             </ul>
@@ -152,10 +204,10 @@ export default function ImportParticipantsPage() {
         {/* Upload de arquivo */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Selecionar Arquivo</h2>
-          
+
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
             <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            
+
             <input
               id="file-upload"
               type="file"
@@ -163,14 +215,14 @@ export default function ImportParticipantsPage() {
               onChange={handleFileChange}
               className="hidden"
             />
-            
+
             <label
               htmlFor="file-upload"
               className="cursor-pointer inline-block px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition"
             >
               Escolher Arquivo
             </label>
-            
+
             {file && (
               <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-600">
                 <FileSpreadsheet className="w-4 h-4" />
@@ -210,7 +262,7 @@ export default function ImportParticipantsPage() {
         {results && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Resultado da Importação</h2>
-            
+
             {/* Resumo */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-gray-50 rounded-lg p-4">
@@ -240,9 +292,7 @@ export default function ImportParticipantsPage() {
                     <div
                       key={index}
                       className={`p-3 rounded-md border ${
-                        detail.success
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-red-50 border-red-200'
+                        detail.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
                       }`}
                     >
                       <div className="flex items-start gap-2">
@@ -252,22 +302,25 @@ export default function ImportParticipantsPage() {
                           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                         )}
                         <div className="flex-1">
-                          <div className="font-medium text-sm">
-                            Linha {detail.row}
-                          </div>
-                          
+                          <div className="font-medium text-sm">Linha {detail.row}</div>
+
                           {detail.errors && detail.errors.length > 0 && (
                             <ul className="mt-1 space-y-1">
                               {detail.errors.map((error, i) => (
-                                <li key={i} className="text-sm text-red-700">• {error}</li>
+                                <li key={i} className="text-sm text-red-700">
+                                  • {error}
+                                </li>
                               ))}
                             </ul>
                           )}
-                          
+
                           {detail.warnings && detail.warnings.length > 0 && (
                             <ul className="mt-1 space-y-1">
                               {detail.warnings.map((warning, i) => (
-                                <li key={i} className="text-sm text-yellow-700 flex items-start gap-1">
+                                <li
+                                  key={i}
+                                  className="text-sm text-yellow-700 flex items-start gap-1"
+                                >
                                   <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                                   <span>{warning}</span>
                                 </li>
@@ -284,6 +337,14 @@ export default function ImportParticipantsPage() {
           </div>
         )}
       </div>
+
+      {/* Footer */}
+      <footer className="w-full p-4 text-center text-gray-600 text-sm">
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento | v
+        {require('../../package.json').version}
+      </footer>
     </AdminLayout>
   );
 }
+
+export default ImportParticipantsPage;

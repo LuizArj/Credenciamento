@@ -82,24 +82,76 @@ export default async function handler(req, res) {
 
         console.log(`[CHECKIN:${requestId}] Evento encontrado: ${localEvent.nome}`);
 
-        // 2. UPSERT de participante (INSERT ... ON CONFLICT)
-        // Garante que apenas um INSERT seja bem-sucedido mesmo com concorrência
+        // 2a. UPSERT de empresa se fornecida
+        let companyId = null;
+        if (req.body.company && req.body.company.cnpj) {
+          const company = req.body.company;
+          const cnpjClean = company.cnpj.replace(/\D/g, '');
+
+          const { rows: companyRows } = await client.query(
+            `INSERT INTO companies (cnpj, razao_social, nome_fantasia, telefone, email, endereco, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (cnpj)
+             DO UPDATE SET
+               razao_social = EXCLUDED.razao_social,
+               nome_fantasia = EXCLUDED.nome_fantasia,
+               telefone = EXCLUDED.telefone,
+               email = EXCLUDED.email,
+               endereco = EXCLUDED.endereco,
+               updated_at = EXCLUDED.updated_at
+             RETURNING id`,
+            [
+              cnpjClean,
+              company.razaoSocial || company.razao_social || '',
+              company.nomeFantasia || company.nome_fantasia || '',
+              company.telefone || '',
+              company.email || '',
+              company.endereco ? JSON.stringify(company.endereco) : null,
+              getCurrentDateTimeGMT4(),
+              getCurrentDateTimeGMT4(),
+            ]
+          );
+          companyId = companyRows[0].id;
+          console.log(
+            `[CHECKIN:${requestId}] Empresa processada: ${company.razaoSocial || company.razao_social}`
+          );
+        }
+
+        // 2b. UPSERT de participante com TODOS os campos
         const { rows: participantRows } = await client.query(
-          `INSERT INTO participants (cpf, nome, email, telefone, fonte, observacoes, ativo, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `INSERT INTO participants (
+            cpf, nome, email, telefone, 
+            data_nascimento, genero, escolaridade, profissao, cargo, endereco,
+            company_id, fonte, observacoes, ativo, created_at, updated_at
+          )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            ON CONFLICT (cpf) 
            DO UPDATE SET 
              nome = EXCLUDED.nome,
              email = EXCLUDED.email,
              telefone = EXCLUDED.telefone,
+             data_nascimento = COALESCE(EXCLUDED.data_nascimento, participants.data_nascimento),
+             genero = COALESCE(EXCLUDED.genero, participants.genero),
+             escolaridade = COALESCE(EXCLUDED.escolaridade, participants.escolaridade),
+             profissao = COALESCE(EXCLUDED.profissao, participants.profissao),
+             cargo = COALESCE(EXCLUDED.cargo, participants.cargo),
+             endereco = COALESCE(EXCLUDED.endereco, participants.endereco),
+             company_id = COALESCE(EXCLUDED.company_id, participants.company_id),
              fonte = EXCLUDED.fonte,
              updated_at = EXCLUDED.updated_at
            RETURNING *`,
           [
             cpfClean,
             participant.name,
-            participant.email,
-            participant.phone,
+            participant.email || '',
+            participant.phone || '',
+            participant.birthDate || null,
+            participant.gender || null,
+            participant.education || null,
+            participant.profession || null,
+            participant.position || null,
+            participant.address ? JSON.stringify(participant.address) : null,
+            companyId,
             participant.source || 'sas',
             `Credenciamento SAS - Evento ${eventDetails.id}`,
             true,

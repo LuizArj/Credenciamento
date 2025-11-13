@@ -1,9 +1,9 @@
 /**
  * PDF Export Utilities
- * 
+ *
  * Provides functions to export data to PDF format using jsPDF and jspdf-autotable.
  * Supports tables, formatting, and basic charts.
- * 
+ *
  * @module lib/export/pdf
  */
 
@@ -11,6 +11,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { anonymizeRecords } from './anonymize';
 import { MIME_TYPES } from '../../constants/export';
+import { getLogoBase64, addLogoToPDF } from '../utils/logo';
 
 export interface PDFExportOptions {
   /** Document title */
@@ -63,34 +64,43 @@ export async function exportToPDF<T extends Record<string, any>>(
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
 
-  let yPosition = margin;
+  let yPosition = 0;
 
-  // Add logo if provided
-  if (logo && includeHeader) {
-    try {
-      doc.addImage(logo, 'PNG', margin, yPosition, 30, 10);
-      yPosition += 15;
-    } catch (err) {
-      console.warn('Failed to add logo to PDF:', err);
-    }
-  }
-
-  // Add title
+  // Add header with blue banner and white logo
   if (includeHeader) {
+    // Blue banner at top
+    doc.setFillColor(0, 82, 147); // #005293 - Sebrae Blue
+    doc.rect(0, 0, pageWidth, 30, 'F');
+
+    // Add white logo on the left side of banner - reduzido
+    if (logo) {
+      try {
+        doc.addImage(logo, 'PNG', margin, 11, 30, 8);
+      } catch (err) {
+        console.warn('Failed to add custom logo to PDF:', err);
+      }
+    } else {
+      // Use default Sebrae white logo - reduzido
+      const logoBase64 = getLogoBase64('white');
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'PNG', margin, 11, 30, 8);
+      }
+    }
+
+    // Title in the center of banner
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(31, 71, 136); // #1F4788
-    doc.text(title, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 10;
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, pageWidth / 2, 15, { align: 'center' });
 
-    // Add subtitle
+    // Subtitle below title (if provided)
     if (subtitle) {
-      doc.setFontSize(12);
+      doc.setFontSize(11);
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(102, 102, 102);
-      doc.text(subtitle, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 10;
+      doc.text(subtitle, pageWidth / 2, 22, { align: 'center' });
     }
+
+    yPosition = 35;
 
     // Add date
     const dateStr = new Date().toLocaleDateString('pt-BR', {
@@ -103,7 +113,9 @@ export async function exportToPDF<T extends Record<string, any>>(
     doc.setFontSize(10);
     doc.setTextColor(128, 128, 128);
     doc.text(`Gerado em: ${dateStr}`, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 15;
+    yPosition += 10;
+  } else {
+    yPosition = margin;
   }
 
   // Prepare table data
@@ -111,8 +123,8 @@ export async function exportToPDF<T extends Record<string, any>>(
     columns && columns.length > 0
       ? columns.map((col) => col.label)
       : processedData.length > 0
-      ? Object.keys(processedData[0]).map((key) => formatHeader(key))
-      : [];
+        ? Object.keys(processedData[0]).map((key) => formatHeader(key))
+        : [];
 
   const tableData = processedData.map((record) => {
     if (columns && columns.length > 0) {
@@ -150,12 +162,9 @@ export async function exportToPDF<T extends Record<string, any>>(
         const totalPages = doc.getNumberOfPages();
         doc.setFontSize(9);
         doc.setTextColor(128, 128, 128);
-        doc.text(
-          `Página ${pageNumber} de ${totalPages}`,
-          pageWidth / 2,
-          pageHeight - 10,
-          { align: 'center' }
-        );
+        doc.text(`Página ${pageNumber} de ${totalPages}`, pageWidth / 2, pageHeight - 10, {
+          align: 'center',
+        });
       }
     },
   });
@@ -207,32 +216,43 @@ export async function exportToPDFWithSummary<T extends Record<string, any>>(
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
 
-  let yPosition = margin;
+  let yPosition = 0;
 
-  // Add header (same as exportToPDF)
-  if (logo && includeHeader) {
-    try {
-      doc.addImage(logo, 'PNG', margin, yPosition, 30, 10);
-      yPosition += 15;
-    } catch (err) {
-      console.warn('Failed to add logo to PDF:', err);
-    }
-  }
-
+  // Add header with blue banner and white logo
   if (includeHeader) {
+    // Blue banner at top
+    doc.setFillColor(0, 82, 147); // #005293 - Sebrae Blue
+    doc.rect(0, 0, pageWidth, 30, 'F');
+
+    // Add white logo on the left side of banner - reduzido
+    if (logo) {
+      try {
+        doc.addImage(logo, 'PNG', margin, 11, 30, 8);
+      } catch (err) {
+        console.warn('Failed to add custom logo to PDF:', err);
+      }
+    } else {
+      // Use default Sebrae white logo - reduzido
+      const logoBase64 = getLogoBase64('white');
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'PNG', margin, 11, 30, 8);
+      }
+    }
+
+    // Title in the center of banner
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(31, 71, 136);
-    doc.text(title, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 10;
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, pageWidth / 2, 15, { align: 'center' });
 
+    // Subtitle below title (if provided)
     if (subtitle) {
-      doc.setFontSize(12);
+      doc.setFontSize(11);
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(102, 102, 102);
-      doc.text(subtitle, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 10;
+      doc.text(subtitle, pageWidth / 2, 22, { align: 'center' });
     }
+
+    yPosition = 35;
 
     const dateStr = new Date().toLocaleDateString('pt-BR', {
       year: 'numeric',
@@ -244,7 +264,9 @@ export async function exportToPDFWithSummary<T extends Record<string, any>>(
     doc.setFontSize(10);
     doc.setTextColor(128, 128, 128);
     doc.text(`Gerado em: ${dateStr}`, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 15;
+    yPosition += 10;
+  } else {
+    yPosition = margin;
   }
 
   // Add summary section
@@ -281,8 +303,8 @@ export async function exportToPDFWithSummary<T extends Record<string, any>>(
     columns && columns.length > 0
       ? columns.map((col) => col.label)
       : processedData.length > 0
-      ? Object.keys(processedData[0]).map((key) => formatHeader(key))
-      : [];
+        ? Object.keys(processedData[0]).map((key) => formatHeader(key))
+        : [];
 
   const tableData = processedData.map((record) => {
     if (columns && columns.length > 0) {
@@ -324,12 +346,9 @@ export async function exportToPDFWithSummary<T extends Record<string, any>>(
         const totalPages = doc.getNumberOfPages();
         doc.setFontSize(9);
         doc.setTextColor(128, 128, 128);
-        doc.text(
-          `Página ${pageNumber} de ${totalPages}`,
-          pageWidth / 2,
-          pageHeight - 10,
-          { align: 'center' }
-        );
+        doc.text(`Página ${pageNumber} de ${totalPages}`, pageWidth / 2, pageHeight - 10, {
+          align: 'center',
+        });
       }
     },
   });

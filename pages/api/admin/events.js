@@ -2,7 +2,9 @@ import { withApiAuth } from '../../../utils/api-auth';
 import { query, withTransaction } from '../../../lib/config/database';
 
 async function handler(req, res) {
-  console.log(`[API] /api/admin/events ${req.method} - query=${JSON.stringify(req.query)} body=${req.method==='GET'? '{}': JSON.stringify(req.body ? req.body : {})}`);
+  console.log(
+    `[API] /api/admin/events ${req.method} - query=${JSON.stringify(req.query)} body=${req.method === 'GET' ? '{}' : JSON.stringify(req.body ? req.body : {})}`
+  );
   switch (req.method) {
     case 'GET':
       return handleGet(req, res);
@@ -48,7 +50,9 @@ async function handleGet(req, res) {
 
     if (search) {
       params.push(`%${search}%`);
-      where.push(`(nome ILIKE $${params.length} OR local ILIKE $${params.length} OR codevento_sas ILIKE $${params.length})`);
+      where.push(
+        `(nome ILIKE $${params.length} OR local ILIKE $${params.length} OR codevento_sas ILIKE $${params.length})`
+      );
     }
 
     if (dateFrom) {
@@ -85,7 +89,10 @@ async function handleGet(req, res) {
 
     // registration stats
     const eventIds = events.map((e) => e.id);
-    const regRes = await query(`SELECT event_id, status FROM registrations WHERE event_id = ANY($1)`, [eventIds]);
+    const regRes = await query(
+      `SELECT event_id, status FROM registrations WHERE event_id = ANY($1)`,
+      [eventIds]
+    );
     const registrationStats = regRes.rows || [];
 
     const statsByEvent = {};
@@ -99,7 +106,8 @@ async function handleGet(req, res) {
 
     const eventsWithStats = events.map((event) => {
       const stats = statsByEvent[event.id] || { total: 0, checkedIn: 0, cancelled: 0 };
-      const attendanceRate = stats.total > 0 ? ((stats.checkedIn / stats.total) * 100).toFixed(1) : '0';
+      const attendanceRate =
+        stats.total > 0 ? ((stats.checkedIn / stats.total) * 100).toFixed(1) : '0';
       return {
         ...event,
         totalRegistrations: stats.total,
@@ -110,7 +118,9 @@ async function handleGet(req, res) {
       };
     });
 
-    return res.status(200).json({ events: eventsWithStats, total, page: parseInt(page), limit: limitVal });
+    return res
+      .status(200)
+      .json({ events: eventsWithStats, total, page: parseInt(page), limit: limitVal });
   } catch (error) {
     console.error('Erro inesperado ao buscar eventos:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });
@@ -200,8 +210,18 @@ async function handlePost(req, res) {
           const params = [];
           ticketCategories.forEach((cat, i) => {
             const baseIdx = params.length + 1;
-            insertValues.push(`($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5}, $${baseIdx + 6})`);
-            params.push(event.id, cat.nome, cat.descricao || null, parseFloat(cat.preco) || 0, parseInt(cat.quantidadeDisponivel) || 0, cat.dataInicioVenda || null, cat.dataFimVenda || null);
+            insertValues.push(
+              `($${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5}, $${baseIdx + 6})`
+            );
+            params.push(
+              event.id,
+              cat.nome,
+              cat.descricao || null,
+              parseFloat(cat.preco) || 0,
+              parseInt(cat.quantidadeDisponivel) || 0,
+              cat.dataInicioVenda || null,
+              cat.dataFimVenda || null
+            );
           });
 
           const categoriesSql = `INSERT INTO ticket_categories (event_id, nome, descricao, preco, quantidade_disponivel, data_inicio_venda, data_fim_venda) VALUES ${insertValues.join(',')}`;
@@ -238,25 +258,82 @@ async function handlePut(req, res) {
         const fields = [];
         const params = [];
         let idx = 1;
-        if (eventData.nome) { fields.push(`nome = $${idx++}`); params.push(eventData.nome); }
-        if (eventData.descricao !== undefined) { fields.push(`descricao = $${idx++}`); params.push(eventData.descricao); }
-        if (eventData.dataInicio !== undefined) { fields.push(`data_inicio = $${idx++}`); params.push(eventData.dataInicio); }
-        if (eventData.dataFim !== undefined) { fields.push(`data_fim = $${idx++}`); params.push(eventData.dataFim); }
-        if (eventData.local !== undefined) { fields.push(`local = $${idx++}`); params.push(eventData.local); }
-        if (eventData.endereco !== undefined) { fields.push(`endereco = $${idx++}`); params.push(eventData.endereco); }
-        if (eventData.capacidade !== undefined) { fields.push(`capacidade = $${idx++}`); params.push(parseInt(eventData.capacidade) || 0); }
-        if (eventData.modalidade !== undefined) { fields.push(`modalidade = $${idx++}`); params.push(eventData.modalidade); }
-        if (eventData.tipoEvento !== undefined) { fields.push(`tipo_evento = $${idx++}`); params.push(eventData.tipoEvento); }
-        if (eventData.publicoAlvo !== undefined) { fields.push(`publico_alvo = $${idx++}`); params.push(eventData.publicoAlvo); }
-        if (eventData.gerente !== undefined) { fields.push(`gerente = $${idx++}`); params.push(eventData.gerente); }
-        if (eventData.coordenador !== undefined) { fields.push(`coordenador = $${idx++}`); params.push(eventData.coordenador); }
-        if (eventData.solucao !== undefined) { fields.push(`solucao = $${idx++}`); params.push(eventData.solucao); }
-        if (eventData.unidade !== undefined) { fields.push(`unidade = $${idx++}`); params.push(eventData.unidade); }
-        if (eventData.tipoAcao !== undefined) { fields.push(`tipo_acao = $${idx++}`); params.push(eventData.tipoAcao); }
-        if (eventData.status !== undefined) { fields.push(`status = $${idx++}`); params.push(eventData.status); }
-        if (eventData.metaParticipantes !== undefined) { fields.push(`meta_participantes = $${idx++}`); params.push(parseInt(eventData.metaParticipantes) || 0); }
-        if (eventData.configuracoes !== undefined) { fields.push(`configuracoes = $${idx++}`); params.push(eventData.configuracoes); }
-        if (eventData.codevento_sas !== undefined) { fields.push(`codevento_sas = $${idx++}`); params.push(eventData.codevento_sas); }
+        if (eventData.nome) {
+          fields.push(`nome = $${idx++}`);
+          params.push(eventData.nome);
+        }
+        if (eventData.descricao !== undefined) {
+          fields.push(`descricao = $${idx++}`);
+          params.push(eventData.descricao);
+        }
+        if (eventData.dataInicio !== undefined) {
+          fields.push(`data_inicio = $${idx++}`);
+          params.push(eventData.dataInicio);
+        }
+        if (eventData.dataFim !== undefined) {
+          fields.push(`data_fim = $${idx++}`);
+          params.push(eventData.dataFim);
+        }
+        if (eventData.local !== undefined) {
+          fields.push(`local = $${idx++}`);
+          params.push(eventData.local);
+        }
+        if (eventData.endereco !== undefined) {
+          fields.push(`endereco = $${idx++}`);
+          params.push(eventData.endereco);
+        }
+        if (eventData.capacidade !== undefined) {
+          fields.push(`capacidade = $${idx++}`);
+          params.push(parseInt(eventData.capacidade) || 0);
+        }
+        if (eventData.modalidade !== undefined) {
+          fields.push(`modalidade = $${idx++}`);
+          params.push(eventData.modalidade);
+        }
+        if (eventData.tipoEvento !== undefined) {
+          fields.push(`tipo_evento = $${idx++}`);
+          params.push(eventData.tipoEvento);
+        }
+        if (eventData.publicoAlvo !== undefined) {
+          fields.push(`publico_alvo = $${idx++}`);
+          params.push(eventData.publicoAlvo);
+        }
+        if (eventData.gerente !== undefined) {
+          fields.push(`gerente = $${idx++}`);
+          params.push(eventData.gerente);
+        }
+        if (eventData.coordenador !== undefined) {
+          fields.push(`coordenador = $${idx++}`);
+          params.push(eventData.coordenador);
+        }
+        if (eventData.solucao !== undefined) {
+          fields.push(`solucao = $${idx++}`);
+          params.push(eventData.solucao);
+        }
+        if (eventData.unidade !== undefined) {
+          fields.push(`unidade = $${idx++}`);
+          params.push(eventData.unidade);
+        }
+        if (eventData.tipoAcao !== undefined) {
+          fields.push(`tipo_acao = $${idx++}`);
+          params.push(eventData.tipoAcao);
+        }
+        if (eventData.status !== undefined) {
+          fields.push(`status = $${idx++}`);
+          params.push(eventData.status);
+        }
+        if (eventData.metaParticipantes !== undefined) {
+          fields.push(`meta_participantes = $${idx++}`);
+          params.push(parseInt(eventData.metaParticipantes) || 0);
+        }
+        if (eventData.configuracoes !== undefined) {
+          fields.push(`configuracoes = $${idx++}`);
+          params.push(eventData.configuracoes);
+        }
+        if (eventData.codevento_sas !== undefined) {
+          fields.push(`codevento_sas = $${idx++}`);
+          params.push(eventData.codevento_sas);
+        }
 
         if (fields.length === 0) {
           // nothing to update, just return current row
@@ -277,9 +354,21 @@ async function handlePut(req, res) {
             const p = [];
             ticketCategories.forEach(() => {
               const base = p.length + 1;
-              insertValues.push(`($${base}, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`);
+              insertValues.push(
+                `($${base}, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`
+              );
             });
-            ticketCategories.forEach((cat) => { p.push(id, cat.nome, cat.descricao || null, parseFloat(cat.preco) || 0, parseInt(cat.quantidadeDisponivel) || 0, cat.dataInicioVenda || null, cat.dataFimVenda || null); });
+            ticketCategories.forEach((cat) => {
+              p.push(
+                id,
+                cat.nome,
+                cat.descricao || null,
+                parseFloat(cat.preco) || 0,
+                parseInt(cat.quantidadeDisponivel) || 0,
+                cat.dataInicioVenda || null,
+                cat.dataFimVenda || null
+              );
+            });
             const sql = `INSERT INTO ticket_categories (event_id, nome, descricao, preco, quantidade_disponivel, data_inicio_venda, data_fim_venda) VALUES ${insertValues.join(',')}`;
             await client.query(sql, p);
           }
@@ -307,26 +396,65 @@ async function handleDelete(req, res) {
     if (!id) {
       return res.status(400).json({ error: 'ID do evento é obrigatório' });
     }
-    // Verificar se há registrações para este evento
-    try {
-      const regsRes = await query('SELECT id FROM registrations WHERE event_id = $1 LIMIT 1', [id]);
-      if (regsRes.rows && regsRes.rows.length > 0) {
-        return res.status(400).json({
-          error: 'Não é possível excluir evento com participantes registrados. Cancele o evento em vez de excluí-lo.',
-        });
+
+    // Excluir em transação para garantir consistência
+    await withTransaction(async (client) => {
+      // 1. Buscar registrations do evento
+      const { rows: regRows } = await client.query(
+        'SELECT id FROM registrations WHERE event_id = $1',
+        [id]
+      );
+
+      if (regRows.length > 0) {
+        const registrationIds = regRows.map((r) => r.id);
+
+        // 2. Deletar check_ins relacionados às registrations
+        await client.query('DELETE FROM check_ins WHERE registration_id = ANY($1::uuid[])', [
+          registrationIds,
+        ]);
+
+        console.log(
+          `[DELETE] Deletados check_ins de ${regRows.length} registrations do evento ${id}`
+        );
       }
 
-      // Excluir o evento (ticket_categories tem ON DELETE CASCADE)
-      await query('DELETE FROM events WHERE id = $1', [id]);
-    } catch (dbErr) {
-      console.error('Erro ao verificar/excluir evento:', dbErr);
-      return res.status(500).json({ error: 'Erro ao excluir evento' });
-    }
+      // 3. Deletar registrations do evento
+      await client.query('DELETE FROM registrations WHERE event_id = $1', [id]);
+
+      console.log(`[DELETE] Deletadas ${regRows.length} registrations do evento ${id}`);
+
+      // 4. Deletar ticket_categories do evento (se houver)
+      const { rowCount: ticketCount } = await client.query(
+        'DELETE FROM ticket_categories WHERE event_id = $1',
+        [id]
+      );
+
+      if (ticketCount > 0) {
+        console.log(`[DELETE] Deletadas ${ticketCount} categorias de ticket do evento ${id}`);
+      }
+
+      // 5. Deletar o evento
+      const { rowCount } = await client.query('DELETE FROM events WHERE id = $1', [id]);
+
+      if (rowCount === 0) {
+        throw new Error('Evento não encontrado');
+      }
+
+      console.log(`[DELETE] Evento ${id} excluído com sucesso`);
+    });
 
     return res.status(200).json({ message: 'Evento excluído com sucesso' });
   } catch (error) {
     console.error('Erro inesperado ao excluir evento:', error);
-    return res.status(500).json({ error: 'Erro interno do servidor' });
+
+    if (error.message === 'Evento não encontrado') {
+      return res.status(404).json({ error: 'Evento não encontrado' });
+    }
+
+    return res.status(500).json({
+      error: 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
 }
 

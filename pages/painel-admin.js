@@ -17,7 +17,7 @@ export default function PainelAdmin() {
   }
 
   return (
-    <AdminLayout title="Dashboard" requiredPermissions={['manage_users', 'manage_events', 'manage_participants']}>
+    <AdminLayout title="Dashboard">
       <DashboardContent isAuthenticated={!!session} />
     </AdminLayout>
   );

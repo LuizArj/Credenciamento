@@ -5,6 +5,7 @@ import AdminLayout from '@/components/AdminLayout';
 import { DashboardMetrics } from '@/components/admin/dashboard/DashboardMetrics';
 import { EventsList } from '@/components/admin/events/EventsList';
 import { RecentActivity } from '@/components/admin/dashboard/RecentActivity';
+import packageJson from '../../package.json';
 
 const DashboardPage = () => {
   const { data: session, status } = useSession();
@@ -35,7 +36,7 @@ const DashboardPage = () => {
   }
 
   return (
-    <AdminLayout title="Painel de Controle" requiredPermissions={['manage_users']}>
+    <AdminLayout title="Painel de Controle">
       <Head>
         <title>Painel Administrativo | Credenciamento Sebrae</title>
       </Head>
@@ -65,6 +66,12 @@ const DashboardPage = () => {
           />
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="w-full p-4 text-center text-gray-600 text-sm">
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento | v
+        {packageJson.version}
+      </footer>
     </AdminLayout>
   );
 };

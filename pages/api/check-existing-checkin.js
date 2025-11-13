@@ -35,6 +35,9 @@ export default async function handler(req, res) {
     console.log('[CHECK_EXISTING] Verificando:', { cpf: cleanCpf, eventId });
 
     // Buscar check-in existente
+    // Check if eventId is UUID format or codevento_sas
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
+
     const result = await query({
       text: `
         SELECT 
@@ -51,7 +54,7 @@ export default async function handler(req, res) {
         INNER JOIN participants p ON p.id = r.participant_id
         INNER JOIN events e ON e.id = r.event_id
         WHERE p.cpf = $1 
-          AND (e.id = $2::uuid OR e.codevento_sas = $2)
+          AND (${isUUID ? 'e.id = $2::uuid' : 'e.codevento_sas = $2'})
         ORDER BY ci.data_check_in DESC
         LIMIT 1
       `,

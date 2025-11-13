@@ -7,7 +7,7 @@ import {
   unformatPhone,
 } from '../utils/validators';
 import { getCurrentDateTimeGMT4 } from '../lib/utils/timezone';
-
+import packageJson from '../package.json';
 import { useSession } from 'next-auth/react';
 
 // --- LISTA DE OPÇÕES (EDITÁVEL) ---
@@ -83,10 +83,25 @@ const ConfigurationScreen = ({ onSessionStart }) => {
         const res = await fetch(`/api/fetch-sas-event?codEvento=${encodeURIComponent(eventCode)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Erro ao buscar evento por código');
-        // O retorno atual é { message, evento, debug }
+        // O retorno atual é { message, evento, source }
         if (!data?.evento) throw new Error('Evento não encontrado');
-        setEvents([data.evento]);
-        setSelectedEvent(data.evento);
+
+        // Add source information to event
+        const eventoComOrigem = {
+          ...data.evento,
+          _dataSource: data.source || 'unknown',
+          _sourceMessage: data.message || '',
+        };
+
+        setEvents([eventoComOrigem]);
+        setSelectedEvent(eventoComOrigem);
+
+        // Show success message with source info
+        const sourceText =
+          data.source === 'cache'
+            ? '✅ Evento carregado do banco de dados local (cache)'
+            : '✅ Evento carregado da API do SAS';
+        console.log(sourceText);
       } catch (err) {
         setError(err.message);
         setEvents([]);
@@ -383,7 +398,25 @@ const ConfigurationScreen = ({ onSessionStart }) => {
 
             {selectedEvent && (
               <div className="mt-6 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4">
-                <h3 className="font-semibold text-white mb-2">Evento Selecionado:</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-white">Evento Selecionado:</h3>
+                  {selectedEvent._dataSource && (
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        selectedEvent._dataSource === 'cache'
+                          ? 'bg-blue-500/20 text-blue-200 border border-blue-400/30'
+                          : 'bg-green-500/20 text-green-200 border border-green-400/30'
+                      }`}
+                      title={
+                        selectedEvent._dataSource === 'cache'
+                          ? 'Dados carregados do banco local (mais rápido)'
+                          : 'Dados carregados da API do SAS'
+                      }
+                    >
+                      {selectedEvent._dataSource === 'cache' ? '💾 Database Local' : '🌐 API SAS'}
+                    </span>
+                  )}
+                </div>
                 <p className="text-white font-medium mb-3">{selectedEvent.nome}</p>
                 <div className="space-y-2 text-sm text-white/80">
                   <p>
@@ -867,49 +900,74 @@ export default function CredenciamentoSAS() {
   const handleSubmit = async (formData) => {
     setLoading(true);
     try {
-      // 1) Buscar dados completos do participante (rápido e necessário para montar payload)
-      const searchRes = await fetch('/api/search-participant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cpf: formData.cpf.replace(/\D/g, '') }),
-      });
-
-      if (!searchRes.ok && searchRes.status !== 404) {
-        throw new Error('Erro ao buscar dados do participante');
-      }
-
-      const searchData = await searchRes.json();
-
-      // 2) Montar dados consolidados
+      // Montar dados consolidados com TODOS os campos do formulário
       const participantData = {
-        ...searchData,
         name: formData.name,
-        email: formData.email,
-        phone: unformatPhone(formData.phone), // somente dígitos
+        email: formData.email || '',
+        phone: unformatPhone(formData.phone) || '', // somente dígitos
         cpf: formData.cpf,
-        source: formData.source || searchData?.source || 'manual',
-        CodParceiro: searchData?.source === 'sas' ? searchData?.rawData?.CodParceiro || '' : '',
+        source: formData.source || participant?.source || 'manual',
+
+        // Campos adicionais que podem vir do formulário
+        birthDate: formData.birthDate || participant?.birthDate || null,
+        gender: formData.gender || participant?.gender || null,
+        education: formData.education || participant?.education || null,
+        profession: formData.profession || participant?.profession || null,
+        position: formData.position || formData.cargo || participant?.position || null,
+        address: formData.address || participant?.address || null,
+
+        // Campos específicos do SAS
+        CodParceiro: participant?.rawData?.CodParceiro || '',
       };
+
+      // Detect if any data was changed during credentialing
+      const detectDataChanges = () => {
+        if (!participant) return false; // New participant, no original data to compare
+
+        // Compare key fields that might have been edited
+        const originalName = participant.name || '';
+        const originalEmail = participant.email || '';
+        const originalPhone = unformatPhone(participant.phone) || '';
+
+        const formName = formData.name || '';
+        const formEmail = formData.email || '';
+        const formPhone = unformatPhone(formData.phone) || '';
+
+        // Check if any field was modified
+        const nameChanged = originalName !== formName;
+        const emailChanged = originalEmail !== formEmail;
+        const phoneChanged = originalPhone !== formPhone;
+
+        return nameChanged || emailChanged || phoneChanged;
+      };
+
+      const teveMudanca = detectDataChanges();
 
       const webhookData = {
         participant: participantData,
         event: session.eventDetails,
         attendant: { name: session.attendantName },
         source: participantData.source,
+        teve_mudanca: teveMudanca ? 'sim' : 'nao',
         company: formData.company
           ? {
-              ...formData.company,
-              telefone: formData.company.telefone
-                ? unformatPhone(formData.company.telefone)
-                : formData.company.telefone,
+              cnpj: formData.company.cnpj || '',
+              razaoSocial: formData.company.razaoSocial || formData.company.razao_social || '',
+              nomeFantasia: formData.company.nomeFantasia || formData.company.nome_fantasia || '',
+              telefone: formData.company.telefone ? unformatPhone(formData.company.telefone) : '',
+              email: formData.company.email || '',
+              endereco: formData.company.endereco || null,
             }
           : null,
-        companyRelation: formData.vinculo || null,
+        companyRelation: formData.vinculo || formData.cargo || null,
         registrationTimestamp: getCurrentDateTimeGMT4(), // Usar GMT-4 (Amazonas)
       };
 
-      // 2.5) NOVO: Verificar se participante já foi credenciado por outro atendente
-      // Fazemos isso ANTES de mostrar sucesso, mas não bloqueamos o fluxo
+      // 2.5) DUPLICATE CHECK: Already performed in handleSearch
+      // Users who reach this point either:
+      // a) Don't have a previous check-in, OR
+      // b) Explicitly chose to proceed despite duplicate warning
+      // Keep verification for safety, but now as secondary check
       try {
         const checkRes = await fetch('/api/check-existing-checkin', {
           method: 'POST',
@@ -924,32 +982,14 @@ export default function CredenciamentoSAS() {
           const checkData = await checkRes.json();
 
           if (checkData.alreadyCheckedIn) {
-            const checkInDate = new Date(checkData.checkInData.data_check_in);
-            const formattedDate = checkInDate.toLocaleDateString('pt-BR');
-            const formattedTime = checkInDate.toLocaleTimeString('pt-BR', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-
-            // Alerta destacado para o operador
-            const shouldContinue = confirm(
-              `⚠️ ATENÇÃO: PARTICIPANTE JÁ CREDENCIADO!\n\n` +
-                `📋 Nome: ${checkData.participantName}\n` +
-                `📅 Data: ${formattedDate} às ${formattedTime}\n` +
-                `👤 Por: ${checkData.checkInData.responsavel_credenciamento}\n\n` +
-                `Este participante já foi credenciado anteriormente neste evento.\n\n` +
-                `Deseja prosseguir mesmo assim?`
-            );
-
-            if (!shouldContinue) {
-              setLoading(false);
-              return; // Cancelar credenciamento
-            }
+            console.log('[SUBMIT] Duplicate confirmed (already warned in search), proceeding...');
+            // User was already warned during handleSearch and chose to proceed
+            // No need to ask again, just log for tracking
           }
         }
       } catch (checkError) {
         console.warn('Erro ao verificar credenciamento existente:', checkError);
-        // Não bloquear o fluxo se a verificação falhar
+        // Don't block flow if verification fails
       }
 
       // 3) Mostrar sucesso imediatamente e disparar processos em background
@@ -971,12 +1011,13 @@ export default function CredenciamentoSAS() {
         })
         .catch((err) => console.error('Erro no envio do webhook de check-in:', err));
 
-      // b) Registrar credenciamento no banco local (agora bloqueante para detectar duplicatas)
+      // b) Registrar credenciamento no banco local com dados da empresa
       const localResponse = await fetch('/api/register-local-credenciamento', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           participant: participantData,
+          company: formData.company || null, // Incluir dados da empresa
           eventDetails: session.eventDetails,
           attendantName: session.attendantName,
           localEventId: session.localEventId,
@@ -1035,11 +1076,74 @@ export default function CredenciamentoSAS() {
     setLoading(true);
 
     try {
-      // Primeiro, buscar dados do participante no SAS
+      const cleanCpf = cpf.replace(/\D/g, '');
+
+      // STEP 1: Search in local database first (PRIORITY)
+      try {
+        const localSearchRes = await fetch('/api/search-local-participant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cpf: cleanCpf,
+            eventId:
+              session.localEventId ||
+              session.eventDetails?.id ||
+              session.eventDetails?.codevento_sas,
+          }),
+        });
+
+        if (localSearchRes.ok) {
+          const localData = await localSearchRes.json();
+
+          if (localData.found && localData.isEnrolled) {
+            console.log('[SEARCH] Participante encontrado no banco local');
+
+            // STEP 1.1: If already checked in, show warning IMMEDIATELY
+            if (localData.hasCheckIn) {
+              const checkInDate = new Date(localData.checkInData.data_check_in);
+              const formattedDate = checkInDate.toLocaleDateString('pt-BR');
+              const formattedTime = checkInDate.toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+
+              const shouldContinue = confirm(
+                `⚠️ ATENÇÃO: PARTICIPANTE JÁ CREDENCIADO!\n\n` +
+                  `📋 Nome: ${localData.participant.name}\n` +
+                  `📅 Data: ${formattedDate} às ${formattedTime}\n` +
+                  `👤 Por: ${localData.checkInData.responsavel_credenciamento}\n\n` +
+                  `Este participante já foi credenciado anteriormente neste evento.\n\n` +
+                  `Deseja prosseguir mesmo assim para ver os dados?`
+              );
+
+              if (!shouldContinue) {
+                setLoading(false);
+                return; // Cancel if user doesn't want to proceed
+              }
+            }
+
+            // Use local data (show form with local database information)
+            setParticipant({
+              ...localData.participant,
+              cpf: formatCPF(cpf),
+              source: 'local', // Mark as coming from local database
+            });
+            setLoading(false);
+            return; // Exit - data found in local database
+          }
+        }
+      } catch (localError) {
+        console.warn('[SEARCH] Erro ao buscar no banco local:', localError);
+        // Continue to external search if local search fails
+      }
+
+      // STEP 2: Not found locally, search external sources (SAS/CPE)
+      console.log('[SEARCH] Participante não encontrado localmente, buscando em SAS/CPE...');
+
       const searchRes = await fetch('/api/search-participant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cpf: cpf.replace(/\D/g, '') }),
+        body: JSON.stringify({ cpf: cleanCpf }),
       });
 
       if (!searchRes.ok && searchRes.status !== 404) {
@@ -1048,7 +1152,7 @@ export default function CredenciamentoSAS() {
 
       const searchData = await searchRes.json();
 
-      // Caso o endpoint tenha retornado um payload (pode ser SAS ou CPE), usamos a fonte que veio na resposta.
+      // If participant found in external sources, show data in form
       if (searchData) {
         setParticipant({
           ...searchData,
@@ -1056,7 +1160,7 @@ export default function CredenciamentoSAS() {
           source: searchData.source || searchData.dataOrigin || searchData.fromSystem || 'cpe',
         });
       } else {
-        // searchRes não trouxe dados (404), considera participante não encontrado
+        // Not found anywhere
         throw new Error('Participante não encontrado nas bases do Sebrae');
       }
     } catch (err) {
@@ -1146,7 +1250,8 @@ export default function CredenciamentoSAS() {
 
       {/* Footer */}
       <footer className="w-full p-4 text-center text-white/60 text-sm">
-        © {new Date().getFullYear()} Sebrae - Sistema de Credenciamento SAS
+        © {new Date().getFullYear()} UTIC - Sebrae RR - Sistema de Credenciamento | v
+        {packageJson.version}
       </footer>
 
       {/* Loading Overlay */}

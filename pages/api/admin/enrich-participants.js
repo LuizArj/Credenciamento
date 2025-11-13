@@ -1,19 +1,18 @@
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
-import pool from '../../../lib/config/database';
+import { db as pool } from '../../../lib/config/database';
 
 /**
  * API para enriquecimento em massa de dados de participantes via SAS
- * 
- * Busca participantes que precisam de enriquecimento e atualiza um por vez
- * com dados do sistema SAS (email, telefone, empresa, etc.)
- * 
+ *
+ * Busca dados do sistema SAS para atualizar informações de participantes selecionados
+ * (email, telefone, empresa, etc.)
+ *
  * POST /api/admin/enrich-participants
- * Body: { 
- *   eventId?: string,  // Opcional: enriquecer apenas participantes de um evento
- *   limit?: number     // Opcional: quantidade máxima a processar (default: 50)
+ * Body: {
+ *   participantIds: string[]  // Array de IDs dos participantes a enriquecer
  * }
- * 
+ *
  * Retorna: {
  *   processed: number,
  *   enriched: number,
@@ -29,7 +28,7 @@ export default async function handler(req, res) {
   try {
     // Verificar autenticação e permissão de admin
     const session = await getServerSession(req, res, authOptions);
-    
+
     if (!session) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
@@ -38,41 +37,24 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
     }
 
-    const { eventId, limit = 50 } = req.body;
+    const { participantIds } = req.body;
 
-    // Buscar participantes que precisam de enriquecimento
-    // Critério: email temporário ou telefone vazio
-    let query = `
-      SELECT DISTINCT p.id, p.cpf, p.nome, p.email, p.telefone, p.company_id
-      FROM participants p
-    `;
-
-    const params = [];
-    
-    if (eventId) {
-      query += `
-        INNER JOIN registrations r ON r.participant_id = p.id
-        WHERE r.event_id = $1
-      `;
-      params.push(eventId);
-    } else {
-      query += ` WHERE 1=1 `;
+    // Validar que participantIds foi fornecido
+    if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
+      return res.status(400).json({
+        error: 'É necessário fornecer um array de IDs de participantes',
+      });
     }
 
-    // Identificar participantes que precisam enriquecimento
-    query += `
-      AND (
-        p.email LIKE '%@temp.com' 
-        OR p.telefone IS NULL 
-        OR p.telefone = ''
-        OR p.company_id IS NULL
-      )
-      ORDER BY p.created_at DESC
-      LIMIT $${params.length + 1}
+    // Buscar os participantes selecionados
+    const query = `
+      SELECT p.id, p.cpf, p.nome, p.email, p.telefone, p.company_id
+      FROM participants p
+      WHERE p.id = ANY($1)
+      ORDER BY p.nome
     `;
-    params.push(limit);
 
-    const participantsRes = await pool.query(query, params);
+    const participantsRes = await pool.query(query, [participantIds]);
     const participants = participantsRes.rows;
 
     if (participants.length === 0) {
@@ -81,7 +63,7 @@ export default async function handler(req, res) {
         enriched: 0,
         failed: 0,
         message: 'Nenhum participante precisa de enriquecimento',
-        details: []
+        details: [],
       });
     }
 
@@ -90,7 +72,7 @@ export default async function handler(req, res) {
       processed: 0,
       enriched: 0,
       failed: 0,
-      details: []
+      details: [],
     };
 
     for (const participant of participants) {
@@ -98,7 +80,7 @@ export default async function handler(req, res) {
 
       try {
         const enriched = await enrichParticipantFromSAS(participant);
-        
+
         if (enriched.success) {
           results.enriched++;
           results.details.push({
@@ -107,7 +89,7 @@ export default async function handler(req, res) {
             nome: participant.nome,
             status: 'success',
             message: 'Dados enriquecidos com sucesso',
-            updatedFields: enriched.updatedFields
+            updatedFields: enriched.updatedFields,
           });
         } else {
           results.failed++;
@@ -116,7 +98,7 @@ export default async function handler(req, res) {
             cpf: participant.cpf,
             nome: participant.nome,
             status: 'failed',
-            message: enriched.message || 'Falha ao enriquecer dados'
+            message: enriched.message || 'Falha ao enriquecer dados',
           });
         }
       } catch (error) {
@@ -126,18 +108,17 @@ export default async function handler(req, res) {
           cpf: participant.cpf,
           nome: participant.nome,
           status: 'error',
-          message: error.message
+          message: error.message,
         });
       }
     }
 
     return res.status(200).json(results);
-
   } catch (error) {
     console.error('Erro no enriquecimento em massa:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Erro ao enriquecer participantes',
-      details: error.message 
+      details: error.message,
     });
   }
 }
@@ -149,34 +130,76 @@ async function enrichParticipantFromSAS(participant) {
   try {
     const cpfClean = participant.cpf.replace(/\D/g, '');
 
-    // Buscar dados no SAS
-    const sasUrl = `${process.env.NEXT_PUBLIC_SAS_API_URL}/participantes`;
-    const sasResponse = await fetch(`${sasUrl}?cpf=${cpfClean}`, {
+    // Buscar dados no SAS usando o mesmo endpoint que o search-participant
+    const sasUrl = `${process.env.NEXT_PUBLIC_SEBRAE_API_URL}/SelecionarPessoaFisica`;
+    const params = new URLSearchParams({ CgcCpf: cpfClean });
+    const fullUrl = `${sasUrl}?${params.toString()}`;
+
+    console.log(`[ENRICH] Buscando dados do SAS para CPF: ${cpfClean}`);
+    console.log(`[ENRICH] URL: ${fullUrl}`);
+
+    const sasResponse = await fetch(fullUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.SAS_API_TOKEN || ''}`
-      }
+        'x-req': process.env.SEBRAE_API_KEY || '',
+      },
     });
 
+    console.log(`[ENRICH] SAS Response Status: ${sasResponse.status}`);
+
     if (!sasResponse.ok) {
+      const errorText = await sasResponse.text();
+      console.error(`[ENRICH] SAS Error: ${errorText}`);
       return {
         success: false,
-        message: `SAS retornou status ${sasResponse.status}`
+        message: `SAS retornou status ${sasResponse.status}`,
       };
     }
 
-    const sasData = await sasResponse.json();
-
-    if (!sasData || sasData.length === 0) {
+    const responseText = await sasResponse.text();
+    let sasData;
+    try {
+      sasData = JSON.parse(responseText);
+    } catch (e) {
+      console.error(`[ENRICH] Erro ao parsear resposta do SAS:`, responseText.substring(0, 200));
       return {
         success: false,
-        message: 'Participante não encontrado no SAS'
+        message: 'Erro ao processar resposta do SAS',
       };
     }
 
-    // Pegar o primeiro resultado (mais recente)
-    const participantData = Array.isArray(sasData) ? sasData[0] : sasData;
+    console.log(`[ENRICH] SAS Data:`, JSON.stringify(sasData).substring(0, 200));
+
+    if (!sasData || (Array.isArray(sasData) && sasData.length === 0)) {
+      return {
+        success: false,
+        message: 'Participante não encontrado no SAS',
+      };
+    }
+
+    // Pegar o primeiro resultado se vier em array
+    const cliente = Array.isArray(sasData) ? sasData[0] : sasData;
+
+    if (!cliente) {
+      return {
+        success: false,
+        message: 'Cliente não encontrado na resposta do SAS',
+      };
+    }
+
+    // Extrair dados do formato do SAS
+    const contatos = cliente.ListaInformacoesContato || [];
+    const email = contatos.find((c) => c.CodComunic === 25)?.Numero || '';
+    const telefone = contatos.find((c) => c.CodComunic === 5)?.Numero || '';
+
+    // Buscar vínculo principal para empresa
+    const vinculos = cliente.ListaVinculo || [];
+    const vinculoPrincipal = vinculos.find((v) => v.IndPrincipal === 1) || vinculos[0];
+
+    console.log(
+      `[ENRICH] Dados extraídos - Email: ${email}, Tel: ${telefone}, Empresa: ${vinculoPrincipal?.NomeRazaoSocialPJ || 'N/A'}`
+    );
 
     // Preparar dados para atualização
     const updates = [];
@@ -184,38 +207,45 @@ async function enrichParticipantFromSAS(participant) {
     let paramIndex = 1;
     const updatedFields = [];
 
-    // Email
-    if (participantData.email && 
-        participantData.email !== participant.email && 
-        !participantData.email.includes('@temp.com')) {
+    // Email - atualizar se encontrado e for diferente e não for temp
+    if (email && email !== participant.email && !email.includes('@temp.com')) {
       updates.push(`email = $${paramIndex++}`);
-      values.push(participantData.email);
+      values.push(email);
       updatedFields.push('email');
+      console.log(`[ENRICH] Atualizando email: ${participant.email} → ${email}`);
     }
 
-    // Telefone
-    if (participantData.telefone && 
-        (!participant.telefone || participant.telefone === '')) {
+    // Telefone - atualizar se encontrado e o atual estiver vazio
+    if (telefone && (!participant.telefone || participant.telefone === '')) {
       updates.push(`telefone = $${paramIndex++}`);
-      values.push(participantData.telefone);
+      values.push(telefone);
       updatedFields.push('telefone');
+      console.log(`[ENRICH] Atualizando telefone: ${participant.telefone} → ${telefone}`);
     }
 
-    // Empresa (buscar ou criar)
-    if (participantData.empresa && !participant.company_id) {
-      const companyId = await getOrCreateCompany(participantData.empresa);
+    // Empresa - buscar ou criar se não tiver vínculo
+    if (vinculoPrincipal && !participant.company_id) {
+      const companyData = {
+        cnpj: vinculoPrincipal.CgcCpf?.toString() || '',
+        razaoSocial: vinculoPrincipal.NomeRazaoSocialPJ || '',
+        cargo: vinculoPrincipal.DescCargCli || '',
+      };
+
+      const companyId = await getOrCreateCompany(companyData);
       if (companyId) {
         updates.push(`company_id = $${paramIndex++}`);
         values.push(companyId);
         updatedFields.push('company_id');
+        console.log(`[ENRICH] Vinculando empresa: ${companyData.razaoSocial}`);
       }
     }
 
     // Se não há atualizações, retornar
     if (updates.length === 0) {
+      console.log(`[ENRICH] Nenhum dado novo para atualizar`);
       return {
         success: false,
-        message: 'Nenhum dado novo encontrado no SAS'
+        message: 'Nenhum dado novo encontrado no SAS',
       };
     }
 
@@ -234,14 +264,14 @@ async function enrichParticipantFromSAS(participant) {
     return {
       success: true,
       message: 'Dados enriquecidos com sucesso',
-      updatedFields
+      updatedFields,
     };
-
   } catch (error) {
-    console.error(`Erro ao enriquecer participante ${participant.cpf}:`, error);
+    console.error(`[ENRICH ERROR] Participante ${participant.cpf}:`, error);
+    console.error(`[ENRICH ERROR] Stack:`, error.stack);
     return {
       success: false,
-      message: error.message
+      message: `Erro: ${error.message}`,
     };
   }
 }
@@ -249,36 +279,41 @@ async function enrichParticipantFromSAS(participant) {
 /**
  * Busca ou cria empresa no banco de dados
  */
-async function getOrCreateCompany(companyName) {
+async function getOrCreateCompany(companyData) {
   try {
-    if (!companyName || companyName.trim() === '') {
+    if (!companyData || !companyData.cnpj || companyData.cnpj.trim() === '') {
+      console.log(`[ENRICH] Dados de empresa inválidos ou CNPJ vazio`);
       return null;
     }
 
-    const name = companyName.trim();
+    const cnpj = companyData.cnpj.replace(/\D/g, '');
+    const razaoSocial = companyData.razaoSocial?.trim() || '';
 
-    // Buscar empresa existente
-    const companyRes = await pool.query(
-      'SELECT id FROM companies WHERE UPPER(nome) = UPPER($1) LIMIT 1',
-      [name]
-    );
+    if (!razaoSocial) {
+      console.log(`[ENRICH] Razão social vazia para CNPJ ${cnpj}`);
+      return null;
+    }
+
+    // Buscar empresa existente por CNPJ
+    const companyRes = await pool.query('SELECT id FROM companies WHERE cnpj = $1 LIMIT 1', [cnpj]);
 
     if (companyRes.rows.length > 0) {
+      console.log(`[ENRICH] Empresa encontrada: ${razaoSocial} (${cnpj})`);
       return companyRes.rows[0].id;
     }
 
     // Criar nova empresa
     const newCompanyRes = await pool.query(
-      `INSERT INTO companies (nome, created_at, updated_at)
-       VALUES ($1, NOW(), NOW())
+      `INSERT INTO companies (cnpj, razao_social, nome_fantasia, created_at, updated_at)
+       VALUES ($1, $2, $2, NOW(), NOW())
        RETURNING id`,
-      [name]
+      [cnpj, razaoSocial]
     );
 
+    console.log(`[ENRICH] Empresa criada: ${razaoSocial} (${cnpj})`);
     return newCompanyRes.rows[0].id;
-
   } catch (error) {
-    console.error('Erro ao buscar/criar empresa:', error);
+    console.error('[ENRICH] Erro ao buscar/criar empresa:', error);
     return null;
   }
 }

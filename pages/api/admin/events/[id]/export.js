@@ -11,6 +11,7 @@ import { authOptions } from '@/pages/api/auth/[...nextauth]';
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import autoTableLib from 'jspdf-autotable';
+import { getLogoBase64, addLogoToPDF } from '@/lib/utils/logo';
 
 // jspdf-autotable precisa ser chamado como função, não como método
 const autoTable = autoTableLib.default || autoTableLib;
@@ -231,11 +232,19 @@ export default async function handler(req, res) {
 
       // Generate PDF report
       const doc = new jsPDF();
-      let yPosition = 15;
+      let yPosition = 10;
 
-      // Header - Sistema Sebrae
+      // Header - Faixa Azul Sebrae com Logo
       doc.setFillColor(0, 82, 147); // Azul Sebrae
-      doc.rect(0, 0, 210, 25, 'F');
+      doc.rect(0, 0, 210, 30, 'F');
+
+      // Add Sebrae logo branco dentro da faixa azul (lado esquerdo) - reduzido e proporção corrigida
+      const logoBase64 = getLogoBase64('white');
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'PNG', 15, 11, 30, 8); // Reduzido: 30mm x 8mm (proporção ~3.75:1)
+      }
+
+      // Título ao lado do logo
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
@@ -253,11 +262,11 @@ export default async function handler(req, res) {
       doc.text(
         `Extraído de credenciamento.rr.sebrae.com.br em ${extractionDate} às ${extractionTime}`,
         105,
-        21,
+        22,
         { align: 'center' }
       );
 
-      yPosition = 35;
+      yPosition = 40;
       doc.setTextColor(0, 0, 0);
 
       // Event Details Section
@@ -298,26 +307,26 @@ export default async function handler(req, res) {
 
       yPosition += 8;
 
-      // Statistics Section (apenas participantes bipados)
+      // Statistics Section - Inscritos e Check-ins
       if (includeStats && stats) {
         doc.setFillColor(240, 240, 240);
         doc.rect(15, yPosition - 5, 180, 8, 'F');
         doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 82, 147);
-        doc.text('ESTATÍSTICAS - PARTICIPANTES BIPADOS', 20, yPosition);
+        doc.text('ESTATÍSTICAS', 20, yPosition);
         yPosition += 10;
 
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(10);
 
-        const checkedInCount = parseInt(stats.checked_in) || 0;
+        const totalParticipants = parseInt(stats.total_participants) || 0;
         const totalCheckins = parseInt(stats.total_checkins_sistema) || 0;
 
         // Cards de estatísticas com destaque
         const statsCards = [
-          { label: 'Participantes Bipados', value: checkedInCount, color: [76, 175, 80] },
-          { label: 'Check-ins pelo Sistema', value: totalCheckins, color: [33, 150, 243] },
+          { label: 'Inscritos no SAS', value: totalParticipants, color: [33, 150, 243] },
+          { label: 'Check-ins pelo Sistema', value: totalCheckins, color: [76, 175, 80] },
         ];
 
         let xPos = 20;
@@ -340,7 +349,6 @@ export default async function handler(req, res) {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         const otherStats = [
-          ['Total de Participantes:', parseInt(stats.total_participants) || 0],
           ['Confirmados:', parseInt(stats.credenciados) || 0],
           ['Pendentes:', parseInt(stats.pendentes) || 0],
           ['Cancelados:', parseInt(stats.cancelados) || 0],
@@ -357,76 +365,160 @@ export default async function handler(req, res) {
         yPosition += 10;
       }
 
-      // Participants Table
+      // Participants Tables - Separated by presence
       if (includeParticipants && participants.length > 0) {
-        console.log('[EXPORT] Adding participants table...');
-        // Add new page if needed
-        if (yPosition > 220) {
-          doc.addPage();
-          yPosition = 20;
+        console.log('[EXPORT] Adding participants tables...');
+
+        // Separar participantes em presentes e ausentes
+        const presentes = participants.filter((p) => p.data_check_in);
+        const ausentes = participants.filter((p) => !p.data_check_in);
+
+        // TABELA 1: PARTICIPANTES PRESENTES
+        if (presentes.length > 0) {
+          // Add new page if needed
+          if (yPosition > 220) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          doc.setFillColor(76, 175, 80); // Verde
+          doc.rect(15, yPosition - 5, 180, 8, 'F');
+          doc.setFontSize(13);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(255, 255, 255);
+          doc.text(`PARTICIPANTES PRESENTES (${presentes.length})`, 20, yPosition);
+          yPosition += 8;
+
+          const presentesData = presentes.map((p) => [
+            anonymize ? maskName(p.nome) : p.nome,
+            anonymize ? maskCPF(p.cpf) : formatCPF(p.cpf),
+            anonymize ? maskEmail(p.email) : p.email || 'N/A',
+            p.fonte || 'N/A',
+            translateStatus(p.status_credenciamento),
+            p.data_check_in
+              ? new Date(p.data_check_in).toLocaleDateString('pt-BR') +
+                ' ' +
+                new Date(p.data_check_in).toLocaleTimeString('pt-BR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : '-',
+          ]);
+
+          autoTable(doc, {
+            startY: yPosition,
+            head: [['Nome', 'CPF', 'Email', 'Fonte', 'Status', 'Check-in']],
+            body: presentesData,
+            styles: {
+              fontSize: 8,
+              cellPadding: 3,
+              lineColor: [220, 220, 220],
+              lineWidth: 0.1,
+            },
+            headStyles: {
+              fillColor: [76, 175, 80], // Verde
+              textColor: 255,
+              fontStyle: 'bold',
+              fontSize: 9,
+              halign: 'center',
+            },
+            alternateRowStyles: {
+              fillColor: [245, 245, 245],
+            },
+            columnStyles: {
+              0: { cellWidth: 40 },
+              1: { cellWidth: 28 },
+              2: { cellWidth: 45 },
+              3: { cellWidth: 18 },
+              4: { cellWidth: 25 },
+              5: { cellWidth: 24 },
+            },
+            margin: { left: 15, right: 15 },
+            didDrawPage: (data) => {
+              // Footer em cada página
+              const pageCount = doc.internal.getNumberOfPages();
+              doc.setFontSize(8);
+              doc.setTextColor(150);
+              doc.text(
+                `Página ${doc.internal.getCurrentPageInfo().pageNumber} de ${pageCount}`,
+                105,
+                285,
+                { align: 'center' }
+              );
+            },
+          });
+
+          yPosition = doc.lastAutoTable.finalY + 15;
         }
 
-        doc.setFillColor(240, 240, 240);
-        doc.rect(15, yPosition - 5, 180, 8, 'F');
-        doc.setFontSize(13);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0, 82, 147);
-        doc.text('LISTA DE PARTICIPANTES', 20, yPosition);
-        yPosition += 8;
+        // TABELA 2: PARTICIPANTES AUSENTES
+        if (ausentes.length > 0) {
+          // Add new page if needed
+          if (yPosition > 220) {
+            doc.addPage();
+            yPosition = 20;
+          }
 
-        const tableData = participants.map((p) => [
-          anonymize ? maskName(p.nome) : p.nome,
-          anonymize ? maskCPF(p.cpf) : formatCPF(p.cpf),
-          anonymize ? maskEmail(p.email) : p.email || 'N/A',
-          p.fonte || 'N/A',
-          translateStatus(p.status_credenciamento),
-          p.data_check_in ? new Date(p.data_check_in).toLocaleDateString('pt-BR') : 'Não bipado',
-        ]);
+          doc.setFillColor(244, 67, 54); // Vermelho
+          doc.rect(15, yPosition - 5, 180, 8, 'F');
+          doc.setFontSize(13);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(255, 255, 255);
+          doc.text(`PARTICIPANTES AUSENTES (${ausentes.length})`, 20, yPosition);
+          yPosition += 8;
 
-        autoTable(doc, {
-          startY: yPosition,
-          head: [['Nome', 'CPF', 'Email', 'Fonte', 'Status', 'Check-in']],
-          body: tableData,
-          styles: {
-            fontSize: 8,
-            cellPadding: 3,
-            lineColor: [220, 220, 220],
-            lineWidth: 0.1,
-          },
-          headStyles: {
-            fillColor: [0, 82, 147],
-            textColor: 255,
-            fontStyle: 'bold',
-            fontSize: 9,
-            halign: 'center',
-          },
-          alternateRowStyles: {
-            fillColor: [245, 245, 245],
-          },
-          columnStyles: {
-            0: { cellWidth: 40 },
-            1: { cellWidth: 28 },
-            2: { cellWidth: 45 },
-            3: { cellWidth: 18 },
-            4: { cellWidth: 25 },
-            5: { cellWidth: 24 },
-          },
-          margin: { left: 15, right: 15 },
-          didDrawPage: (data) => {
-            // Footer em cada página
-            const pageCount = doc.internal.getNumberOfPages();
-            doc.setFontSize(8);
-            doc.setTextColor(150);
-            doc.text(
-              `Página ${doc.internal.getCurrentPageInfo().pageNumber} de ${pageCount}`,
-              105,
-              285,
-              { align: 'center' }
-            );
-          },
-        });
+          const ausentesData = ausentes.map((p) => [
+            anonymize ? maskName(p.nome) : p.nome,
+            anonymize ? maskCPF(p.cpf) : formatCPF(p.cpf),
+            anonymize ? maskEmail(p.email) : p.email || 'N/A',
+            p.fonte || 'N/A',
+            translateStatus(p.status_credenciamento),
+          ]);
 
-        console.log('[EXPORT] Participants table added successfully');
+          autoTable(doc, {
+            startY: yPosition,
+            head: [['Nome', 'CPF', 'Email', 'Fonte', 'Status']],
+            body: ausentesData,
+            styles: {
+              fontSize: 8,
+              cellPadding: 3,
+              lineColor: [220, 220, 220],
+              lineWidth: 0.1,
+            },
+            headStyles: {
+              fillColor: [244, 67, 54], // Vermelho
+              textColor: 255,
+              fontStyle: 'bold',
+              fontSize: 9,
+              halign: 'center',
+            },
+            alternateRowStyles: {
+              fillColor: [245, 245, 245],
+            },
+            columnStyles: {
+              0: { cellWidth: 45 },
+              1: { cellWidth: 30 },
+              2: { cellWidth: 50 },
+              3: { cellWidth: 20 },
+              4: { cellWidth: 30 },
+            },
+            margin: { left: 15, right: 15 },
+            didDrawPage: (data) => {
+              // Footer em cada página
+              const pageCount = doc.internal.getNumberOfPages();
+              doc.setFontSize(8);
+              doc.setTextColor(150);
+              doc.text(
+                `Página ${doc.internal.getCurrentPageInfo().pageNumber} de ${pageCount}`,
+                105,
+                285,
+                { align: 'center' }
+              );
+            },
+          });
+        }
+
+        console.log('[EXPORT] Participants tables added successfully');
       }
 
       console.log('[EXPORT] Generating PDF buffer...');
@@ -472,7 +564,8 @@ function formatCPF(cpf) {
 function maskCPF(cpf) {
   if (!cpf) return 'N/A';
   const formatted = formatCPF(cpf);
-  return formatted.replace(/\d(?=\d{4})/g, '*');
+  // Anonimizar mostrando apenas os 3 primeiros dígitos: 123.***.***-**
+  return formatted.replace(/^(\d{3})\.(\d{3})\.(\d{3})-(\d{2})$/, '$1.***.***-**');
 }
 
 function maskName(name) {
